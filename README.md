@@ -4,7 +4,7 @@
 
 - 目标系统：**macOS 27.0（Golden Gate）及以上**，Xcode 27，Swift 6（严格并发）
 - 界面：SwiftUI + Liquid Glass（`glassEffect` / `NSGlassEffectView`）
-- 数据：本地 JSON + 图片二进制，全部存放在 `~/Library/Application Support/Clip`
+- 数据：SwiftData（底层 SQLite）增量持久化，图片等二进制外置为文件，全部存放在 `~/Library/Application Support/Clip`
 
 ## 功能
 
@@ -12,7 +12,7 @@
 | --- | --- |
 | 全局快捷键 | 默认 ⇧⌘V 呼出，可在设置里改键；Carbon `RegisterEventHotKey`，**不需要任何权限** |
 | 贴着光标弹出 | 面板出现在鼠标旁（右下优先，空间不足自动翻到左／上方并夹在屏幕内）；可在设置里改回屏幕上方居中 |
-| 紧凑弹窗 | 高度随条目数收缩，最多到你设定的上限；默认不显示预览，就是一个类似 Maccy 的小弹窗 |
+| 紧凑弹窗 | 高度固定为你设定的值，条目超出时列表内滚动；默认不显示预览，就是一个类似 Maccy 的小弹窗 |
 | 预览按需展开 | **→**（或 ⌘Y）向右展开预览面板，**左上角固定不动**，列表不会跳；**←**（或 ⌘Y）收起 |
 | 内容识别 | 文本 / 链接 / 颜色 / 图片 / 文件，自动分类并记录来源应用 |
 | 搜索与筛选 | 顶部搜索框实时过滤；分类药丸带计数，窄弹窗下自动只留图标 |
@@ -44,7 +44,7 @@
   同时窗口 alpha 变成规整的圆角矩形，AppKit 的窗口阴影也能正确跟随这个形状。
   注意用 `layer.mask` 而不是 `masksToBounds`，后者会把 layer 自己的阴影一起裁掉。
 - **紧凑**：搜索框 32pt、分类 24pt、行高 40（紧凑）/ 52（宽松）、状态栏 34pt；
-  面板高度 = 头部 + 列表 + 状态栏，条目少时窗口自动变矮。
+  面板高度 = 头部 + 列表 + 状态栏；高度固定为设定值，条目多少都只影响列表内部滚动（避免呼出时窗口上下跳）。
 - 窗口尺寸和 SwiftUI 布局共用 `PanelMetrics`，两边不会算出不同的高度。
 
 ## 构建
@@ -206,6 +206,7 @@ Sources/
     AppCoordinator.swift    应用级协调者：采集 → 存储 → 面板 → 粘贴
   Models/
     ClipItem.swift          条目模型（展示、搜索、时间格式化）
+    ClipRecord.swift        SwiftData @Model（显式 nonisolated），与 ClipItem 双向映射
     ClipSettings.swift      @Observable 设置，逐项落 UserDefaults
     Shortcut.swift          快捷键模型（Carbon 修饰键 / 键码 / 显示名）
   Services/
@@ -214,8 +215,8 @@ Sources/
     PasteboardWriter.swift  写回剪贴板（带 `com.river.clip.marker` 防回环标记）
     ImageTranscoder.swift   actor，ImageIO 转码 + 缩略图 + 尺寸限制
     ContentHash.swift       SHA-256 内容指纹（CryptoKit）
-    ClipStorage.swift       actor，history.json + Blobs/ 的读写、备份与清理
-    ClipStore.swift         @Observable 列表状态：去重、排序、筛选、淘汰、防抖落盘
+    ClipStorage.swift       actor，SwiftData 记录 CRUD（每笔写显式 save）+ Blobs/ 文件读写与清理
+    ClipStore.swift         @Observable 列表状态：去重、排序、筛选、淘汰、串行化增量落库
     HotKeyCenter.swift      Carbon 全局热键
     PasteService.swift      辅助功能授权检查 + CGEvent ⌘V 回填
     ImageCache.swift        NSCache 缩略图 / 预览图缓存
@@ -239,11 +240,20 @@ Sources/
 
 ## 架构要点
 
-**采集链路**：`NSPasteboard.general.changeCount` 每 0.4s 轮询一次（`Timer` + `tolerance` 0.2，对 CPU 几乎无影响）→ 变化时解析成 `ClipDraft` → `ClipStore.ingest` 去重 / 转码 / 入库 → 1s 防抖写盘。
+**采集链路**：`NSPasteboard.general.changeCount` 每 0.4s 轮询一次（`Timer` + `tolerance` 0.2，对 CPU 几乎无影响）→ 变化时解析成 `ClipDraft` → `ClipStore.ingest` 去重 / 转码 / 入库 → 增量写入 SwiftData（每笔改动立即落库，只写受影响的行，没有全量重写）。
 面板打开时前台应用就是 Clip 自己，这种情况会**延后重试**而不是直接丢弃，避免漏采。
 
 **并发模型**：`SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor` + `SWIFT_STRICT_CONCURRENCY=complete`。
-UI 与状态都在主 actor；磁盘与图片转码分别关在 `ClipStorage`、`ImageTranscoder` 两个 actor 里，主线程不碰 I/O。
+UI 与状态都在主 actor；数据库与文件 I/O、图片转码分别关在 `ClipStorage`、`ImageTranscoder` 两个 actor 里，主线程不碰 I/O。
+SwiftData 相关的几个关键决策：
+
+- `@Model` 类显式 `nonisolated`（否则会被默认隔离隐式推断成主线程隔离，无法在后台 actor 的 context 里使用）；
+- `ClipStorage` 是普通 actor，在 actor 方法内**懒创建** `ModelContext`（落在私有串行队列，不会因首访在主线程而退化成主队列），不用 `@ModelActor`（它的 context 队列绑定创建线程）；
+- `@Model` 实例不是 Sendable，绝不跨 actor 传递，对外只暴露 `ClipItem`（Sendable DTO）；
+- 关闭 autosave、每次写操作显式 `save()`（强杀时 autosave 不可靠）；
+- `ClipStore` 的所有落库操作经一个串行任务链排队，写入顺序与内存改动顺序严格一致；
+- schema 用 `VersionedSchema`（v1）+ `SchemaMigrationPlan` 起步，未来模型演进走显式、可控的迁移路径；
+- 刻意**不用** macOS 27 的 `ResultsObserver` / `@Query`：`ClipStore` 是唯一写入者，内存数组就是事实来源，引入跨 context 观测没有收益。
 
 **窗口**：`NSPanel(.borderless, .fullSizeContentView, .nonactivatingPanel)`，`canBecomeKey = true` 以便输入搜索，
 `level = .floating`，`collectionBehavior` 允许跟随所有空间。内容套一层 `NSGlassEffectView`
@@ -257,15 +267,16 @@ UI 与状态都在主 actor；磁盘与图片转码分别关在 `ClipStorage`、
 
 **防回环**：写回剪贴板时带一个 `com.river.clip.marker` 类型，轮询时看到它就跳过。
 
-**数据安全**：`history.json` 解析失败时先备份成 `history-corrupt-<时间戳>.json`，
-并**拒绝用空列表覆盖**、拒绝清理图片文件；启动时还会让位给已经存在的另一份副本。
+**数据安全**：条目存进 SwiftData（`Clip.store`，底层 SQLite），每次写操作显式 `save()`，
+强杀进程也不丢数据；数据库打开失败时回退到内存容器并打日志，绝不用空库覆盖原文件；
+启动时还会让位给已经存在的另一份副本。
 
 ## 数据位置
 
 ```
 ~/Library/Application Support/Clip/
-├── history.json   条目索引
-└── Blobs/         PNG 原图与 JPG 缩略图
+├── Clip.store      SwiftData 条目数据库（底层 SQLite，随写随存；另生成 -wal / -shm）
+└── Blobs/          PNG 原图、JPG 缩略图与 RTF 富文本
 ```
 
 设置存在 `~/Library/Preferences/com.river.Clip.plist`。设置里的「在访达中显示」可以直接跳过去。

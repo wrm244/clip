@@ -147,7 +147,9 @@ enum ColorValue {
                 .compactMap(Double.init)
             guard numbers.count >= 3 else { return nil }
             let scale = numbers.prefix(3).contains { $0 > 1 } ? 255.0 : 1.0
-            let alpha = numbers.count >= 4 ? numbers[3] : 1
+            var alpha = numbers.count >= 4 ? numbers[3] : 1
+            // alpha 与 RGB 同尺度：rgba(255,0,0,128) 的 128 也是按 255 写的
+            if scale == 255, alpha > 1 { alpha /= 255 }
             return NSColor(
                 srgbRed: numbers[0] / scale,
                 green: numbers[1] / scale,

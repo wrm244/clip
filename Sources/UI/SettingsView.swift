@@ -147,7 +147,7 @@ struct GeneralSettings: View {
             } header: {
                 Text("历史")
             } footer: {
-                Text("固定（置顶）的条目永远不会被自动清理。")
+                Text("固定（置顶）的条目永远不会被自动清理；保留时长按条目最后一次使用的时间计算。")
             }
 
             Section {
@@ -242,13 +242,13 @@ struct AppearanceSettings: View {
                 LabeledContent("面板宽度") {
                     measurement(Bindable(settings).panelWidth, range: 360...900, unit: "pt")
                 }
-                LabeledContent("最大高度") {
+                LabeledContent("面板高度") {
                     measurement(Bindable(settings).panelHeight, range: 320...900, unit: "pt")
                 }
             } header: {
                 Text("面板")
             } footer: {
-                Text("关闭「在鼠标位置弹出」后，面板固定在屏幕上方居中显示。高度会随条目数量自动收缩，不会超过这里的上限。")
+                Text("关闭「在鼠标位置弹出」后，面板固定在屏幕上方居中显示。面板高度是固定值，条目超出时在列表内滚动；展开预览时只向右加宽。")
             }
         }
         .formStyle(.grouped)
@@ -451,6 +451,10 @@ struct AboutSettings: View {
             Button("清空全部数据", role: .destructive) {
                 Task {
                     await coordinator.store.eraseEverything()
+                    // 缩略图/预览图缓存的键是 blob 文件名，清空后必须一起清，
+                    // 否则已删除的图片还会从缓存里显示出来
+                    ImageCache.shared.clear()
+                    coordinator.store.showToast("已清空全部数据", symbol: "trash.fill")
                     usage = await coordinator.store.diskUsage()
                 }
             }

@@ -77,7 +77,9 @@ struct ClipRowView: View {
         HStack(spacing: 5) {
             Text(item.kind.title)
             Text("·")
-            Text(item.detail)
+            // 走 store 的缓存版本：文本条目的字符/行数统计是 O(全文长度)，
+            // 而这一行在悬停、选中、滚动时都会重绘。
+            Text(coordinator.store.detail(for: item))
             if showSource, let source = item.sourceName {
                 Text("·")
                 Text(source)

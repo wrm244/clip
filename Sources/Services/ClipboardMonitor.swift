@@ -24,7 +24,11 @@ final class ClipboardMonitor {
     func start() {
         guard timer == nil else { return }
         lastChangeCount = NSPasteboard.general.changeCount
-        let timer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
+        // 用未调度的 Timer 再手动加入 .common 模式：
+        // 之前是 scheduledTimer（已加入 .default）又 add(.common)，同一个定时器
+        // 被登记两次；改为只登记一次，意图也更清楚（.common 能在菜单追踪 /
+        // 滚动时继续触发）。
+        let timer = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
         timer.tolerance = 0.2
@@ -39,17 +43,15 @@ final class ClipboardMonitor {
         isRunning = false
     }
 
-    /// 面板里发生了粘贴，跳过这一轮变化。
-    func syncChangeCount() {
-        lastChangeCount = NSPasteboard.general.changeCount
-    }
-
     private func poll() {
         let pasteboard = NSPasteboard.general
         let changeCount = pasteboard.changeCount
         guard changeCount != lastChangeCount else { return }
-        lastChangeCount = changeCount
 
+        // 注意：这里先不把 lastChangeCount 更新为 changeCount。
+        // 面板是前台时要延后重试——如果此刻就记下新值，下一轮的
+        // guard 会因为「没有变化」直接短路，重试永远不会发生，
+        // 面板打开期间外部复制的内容就会被整段漏掉。
         let hasMarker = pasteboard.string(forType: PasteboardReader.markerType) != nil
         let concealed = settings.ignoreConcealed && PasteboardReader.isConcealed(pasteboard)
         let clipIsFrontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier

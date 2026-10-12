@@ -6,7 +6,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         // 同一份数据目录只能有一个写入者：如果磁盘上存在另一份 Clip 副本已经在跑，
-        // 就直接让它接管，避免两个进程互相覆盖 history.json。
+        // 就直接让它接管，避免两个进程互相写坏同一个 SwiftData 数据库。
         let me = ProcessInfo.processInfo.processIdentifier
         // 只有「另一份副本」（bundle 路径不同）才需要让位：快速重启时
         // LaunchServices 可能还留着刚退出实例的记录，那种情况必须继续启动。
@@ -87,9 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        let coordinator = AppCoordinator.shared
-        coordinator.monitor.stop()
-        coordinator.saveSynchronously()
+        // SwiftData 每笔写操作都已显式 save()，退出时没有需要补写的数据。
+        AppCoordinator.shared.monitor.stop()
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {

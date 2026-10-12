@@ -72,7 +72,8 @@ final class ClipSettings {
     private let defaults = UserDefaults.standard
 
     /// 快捷键变化后需要重新注册全局热键。
-    var onHotKeyChange: (() -> Void)?
+    /// 回调不需要参与观察（设置它本身不该触发任何视图更新），与 onAppearanceChange 保持一致。
+    @ObservationIgnored var onHotKeyChange: (() -> Void)?
 
     // MARK: 采集
 
@@ -84,16 +85,27 @@ final class ClipSettings {
         didSet { defaults.set(ignoreConcealed, forKey: Key.ignoreConcealed) }
     }
 
+    /// 保留策略（条数 / 天数）变化后的回调：需要立即按新策略清理已有历史。
+    /// 否则用户把上限从 1000 调到 100 后，列表要等到下次复制新内容才会收缩。
+    @ObservationIgnored var onRetentionChange: (() -> Void)?
+
     var maxItems: Int = 300 {
-        didSet { defaults.set(maxItems, forKey: Key.maxItems) }
+        didSet {
+            defaults.set(maxItems, forKey: Key.maxItems)
+            if maxItems != oldValue { onRetentionChange?() }
+        }
     }
 
     /// 保留天数，0 表示永久保留。
     var retentionDays: Int = 0 {
-        didSet { defaults.set(retentionDays, forKey: Key.retentionDays) }
+        didSet {
+            defaults.set(retentionDays, forKey: Key.retentionDays)
+            if retentionDays != oldValue { onRetentionChange?() }
+        }
     }
 
-    /// 单条内容体积上限（字节），超过的图片会被忽略。
+    /// 单条内容体积上限（字节）。图片编码后仍超限时会自动降采样再试，
+    /// 降到下限还是超限才忽略这条内容。
     var maxItemBytes: Int = 8 * 1024 * 1024 {
         didSet { defaults.set(maxItemBytes, forKey: Key.maxItemBytes) }
     }

@@ -31,7 +31,7 @@ final class SettingsWindowController {
         if let pane { model.pane = pane }
         let window = self.window ?? makeWindow(coordinator: coordinator)
         self.window = window
-        apply(pane: model.pane, to: window, animated: false)
+        apply(pane: model.pane, to: window)
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }
@@ -39,7 +39,7 @@ final class SettingsWindowController {
     private func makeWindow(coordinator: AppCoordinator) -> NSWindow {
         let root = SettingsView(onPaneChange: { [weak self] pane in
             guard let self, let window = self.window else { return }
-            apply(pane: pane, to: window, animated: true)
+            apply(pane: pane, to: window)
         })
         .environment(model)
         .environment(coordinator)
@@ -49,7 +49,9 @@ final class SettingsWindowController {
 
         let window = NSWindow(contentViewController: NSHostingController(rootView: root))
         window.title = model.pane.title
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        // 不加 .resizable：README 明确承诺设置窗口尺寸固定 720×640，
+        // 只禁掉最大化按钮是挡不住用户拖边框改尺寸的。
+        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         // 标题栏不画文字：分栏标题写在内容里的固定头部（不会被滚动内容顶到）。
         // window.title 仍然跟着当前分栏更新，供窗口菜单 / 调度中心使用。
@@ -75,7 +77,7 @@ final class SettingsWindowController {
     /// 切换分栏只更新标题。
     /// 窗口尺寸是固定的：切换分栏时窗口大小和位置都不动，
     /// 内容多出来的部分由表单自己滚动。
-    private func apply(pane: SettingsPane, to window: NSWindow, animated: Bool) {
+    private func apply(pane: SettingsPane, to window: NSWindow) {
         window.title = pane.title
     }
 }

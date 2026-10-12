@@ -78,8 +78,12 @@ final class PanelController {
         if isVisible {
             isVisible = false
             if restoreFocus, let app = previousApp, !app.isTerminated {
-                // 带 options 的 activate 才会可靠地把前台应用抢回来
-                app.activate(options: [.activateAllWindows])
+                // 协作激活：面板是 key window 时 Clip 还是活动应用，
+                // 先把激活状态让渡给目标，activate 请求才能稳定成功
+                if NSApp.isActive {
+                    NSApp.yieldActivation(to: app)
+                }
+                app.activate()
             }
         }
     }
@@ -240,7 +244,12 @@ final class PanelController {
             return self.handle(event) ? nil : event
         }
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            MainActor.assumeIsolated { self?.hide() }
+            MainActor.assumeIsolated {
+                // 点面板外面 = 用户想去点别的 App。这里绝不能 restoreFocus：
+                // 那会把焦点强行抢回「呼出面板前的 App」，和用户刚点的窗口打架。
+                // 只把面板收起来，焦点交给这次点击自己决定。
+                self?.hide(restoreFocus: false)
+            }
         }
     }
 

@@ -26,7 +26,15 @@ final class HotKeyCenter {
             eventKind: UInt32(kEventHotKeyPressed)
         )
         let context = Unmanaged.passUnretained(self).toOpaque()
-        InstallEventHandler(GetApplicationEventTarget(), clipHotKeyCallback, 1, &eventType, context, &eventHandler)
+        // 事件处理器必须装成功，否则 RegisterEventHotKey 虽然返回成功，
+        // 热键按下也永远不会回调（表现为「快捷键没反应」且没有任何日志）。
+        let installStatus = InstallEventHandler(
+            GetApplicationEventTarget(), clipHotKeyCallback, 1, &eventType, context, &eventHandler)
+        guard installStatus == noErr else {
+            eventHandler = nil
+            NSLog("[Clip] 安装热键事件处理器失败 (OSStatus \(installStatus))")
+            return false
+        }
 
         var reference: EventHotKeyRef?
         let hotKeyID = EventHotKeyID(signature: Self.signature, id: 1)

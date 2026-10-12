@@ -34,13 +34,21 @@ final class AppCoordinator {
         settings.onAppearanceChange = { [weak self] in
             self?.panel.syncAppearance()
         }
+        settings.onRetentionChange = { [weak self] in
+            self?.store.applyRetentionNow()
+        }
         panel.attach(coordinator: self)
         HotKeyCenter.shared.onTrigger = { [weak self] in
             self?.togglePanel()
         }
         applyHotKey()
-        monitor.start()
-        Task { await store.load() }
+        // 历史加载完成后再开始采集：load 会用数据库内容整体覆盖内存列表，
+        // 采集先跑的话，刚采集的条目会在 load 返回时被顶掉
+        // （库里还在、列表里消失，重启才恢复）。
+        Task {
+            await store.load()
+            monitor.start()
+        }
     }
 
     /// 注册全局热键。
@@ -48,11 +56,6 @@ final class AppCoordinator {
         let registered = HotKeyCenter.shared.register(settings.hotkey)
         guard !registered else { return }
         store.showToast("快捷键 \(settings.hotkey.displayString) 注册失败", symbol: "exclamationmark.triangle.fill")
-    }
-
-    /// 退出前同步写盘。
-    func saveSynchronously() {
-        ClipStorage.shared.saveSynchronously(store.items)
     }
 
     // MARK: 面板
@@ -85,7 +88,10 @@ final class AppCoordinator {
     /// 粘贴：写回剪贴板，关闭面板，必要时模拟 ⌘V。
     func paste(_ item: ClipItem, plainText: Bool = false) {
         Task {
-            await PasteboardWriter.write(item, plainText: plainText)
+            guard await PasteboardWriter.write(item, plainText: plainText) else {
+                store.showToast("内容已不存在，无法粘贴", symbol: "exclamationmark.triangle.fill")
+                return
+            }
             if settings.playSound {
                 NSSound(named: "Pop")?.play()
             }
@@ -107,7 +113,10 @@ final class AppCoordinator {
     /// 只复制，不自动粘贴。
     func copy(_ item: ClipItem, plainText: Bool = false) {
         Task {
-            await PasteboardWriter.write(item, plainText: plainText)
+            guard await PasteboardWriter.write(item, plainText: plainText) else {
+                store.showToast("内容已不存在，无法复制", symbol: "exclamationmark.triangle.fill")
+                return
+            }
             store.markUsed(item.id)
             store.showToast(plainText ? "已复制为纯文本" : "已复制", symbol: "doc.on.doc.fill")
         }
@@ -152,7 +161,12 @@ final class AppCoordinator {
         // Clip 是 LSUIElement 代理应用，不会自动把前台让出去，
         // 不主动 hide 的话后面发的 ⌘V 会打回 Clip 自己。
         NSApp.hide(nil)
-        app.activate(options: [.activateAllWindows])
+        // 协作激活：activate 只是请求，活动应用先把激活状态让渡给目标，
+        // 请求才能稳定成功（activate(options:) 自 macOS 14 起已弃用）。
+        if NSApp.isActive {
+            NSApp.yieldActivation(to: app)
+        }
+        app.activate()
         for _ in 0..<50 {
             if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
                 break

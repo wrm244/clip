@@ -46,21 +46,34 @@ final class PanelContainerView: NSView {
 
     /// 把系统解析出来的圆角应用到 layer。
     /// 用 mask 而不是 masksToBounds：前者只裁剪内容，layer 自己的阴影还能照常画。
+    ///
+    /// mask 层只建一次、之后只更新 path：layout() 在每次窗口缩放时都会走这里，
+    /// 每次新建 CAShapeLayer 会白白产生一堆图层分配。
+    private let cornerMask = CAShapeLayer()
+
     private func applyCornerShape() {
         let radius = effectiveCornerRadii?.topLeft ?? cornerRadius
         guard radius > 0, !bounds.isEmpty else { return }
         wantsLayer = true
         guard let layer else { return }
-        layer.cornerCurve = .continuous
+
+        if layer.mask !== cornerMask {
+            layer.cornerCurve = .continuous
+            layer.mask = cornerMask
+        }
         let path = CGPath(
             roundedRect: bounds,
             cornerWidth: radius,
             cornerHeight: radius,
             transform: nil
         )
-        let mask = CAShapeLayer()
-        mask.path = path
-        layer.mask = mask
+        // 关闭隐式动画：窗口缩放是连续的，让 mask 跟着路径逐帧跳变即可，
+        // 否则每帧都会起一个 0.25s 的隐式动画、互相打断。
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        cornerMask.frame = bounds
+        cornerMask.path = path
         layer.shadowPath = path
+        CATransaction.commit()
     }
 }
