@@ -31,8 +31,32 @@ enum PanelMetrics {
     // 窗口高度不在这里算：它是用户设定的固定值（ClipSettings.panelHeight），
     // 不随条目数收缩，否则呼出/收起时窗口会上下跳。
 
+    /// 展开预览时列表至少要有的宽度。面板设得比它窄时，展开会顺手把列表撑宽。
+    static func expandedListWidth(listWidth: CGFloat) -> CGFloat {
+        max(listWidth, minListWidth)
+    }
+
     /// 窗口宽度：展开预览时向右加宽，列表宽度不变。
     static func panelWidth(listWidth: CGFloat, previewing: Bool) -> CGFloat {
-        previewing ? max(listWidth, minListWidth) + separator + previewWidth : listWidth
+        previewing ? expandedListWidth(listWidth: listWidth) + separator + previewWidth : listWidth
+    }
+
+    /// 展开动画的时长。窗口按它动，内容不自己动——内容只看窗口的实时宽度（见 previewProgress）。
+    static let previewToggleDuration: Double = 0.24
+
+    /// 展开进度：0 = 完全收起，1 = 完全展开。
+    ///
+    /// 入参是窗口的**实际**宽度（动画中就是当前那一帧的宽度），
+    /// 所以展开 / 收起时内容永远和窗口同宽，不需要两边各自对齐动画参数。
+    static func previewProgress(windowWidth: CGFloat, listWidth: CGFloat) -> CGFloat {
+        let collapsed = listWidth
+        let expanded = panelWidth(listWidth: listWidth, previewing: true)
+        guard expanded > collapsed else { return 1 }
+        return min(max((windowWidth - collapsed) / (expanded - collapsed), 0), 1)
+    }
+
+    /// 给定展开进度时，左侧列表占用的宽度。
+    static func listWidth(at progress: CGFloat, listWidth: CGFloat) -> CGFloat {
+        listWidth + (expandedListWidth(listWidth: listWidth) - listWidth) * progress
     }
 }

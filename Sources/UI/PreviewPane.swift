@@ -16,13 +16,17 @@ struct PreviewPane: View {
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                // 每条从顶部开始看：不给 id 的话 ScrollView 会沿用上一条的滚动位置
+                // （只有内容类型变了才会自己归零），长文本 → 短文本、大图 → 小图
+                // 时会停在中段，看着就像预览窗「跳了一下」。
+                .id(item.id)
                 separator
                 actions(for: item)
             } else {
                 EmptyHint(title: L("未选择条目"), message: L("在左侧选择一条记录即可查看详情"), symbol: "square.dashed")
             }
         }
-        .frame(width: 320)
+        .frame(width: PanelMetrics.previewWidth)
         .frame(maxHeight: .infinity)
     }
 

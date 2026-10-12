@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import QuartzCore
 import QuickLookUI
 import SwiftUI
 
@@ -191,21 +192,22 @@ final class PanelController {
         )
     }
 
-    /// 展开 / 收起预览：**完全不做动画**。
+    /// 展开 / 收起预览：给窗口宽度做一次动画。
     ///
-    /// 之前这里是"位移过渡 + 挂在根视图上的弹簧动画"，而窗口尺寸又是瞬间变化的，
-    /// 两者不同步（动画进行中窗口已经变宽），列表看起来就会回弹。
-    /// 现在状态和窗口在同一帧直接切换，不存在任何会被动画化的中间状态。
-    /// → / ⌘Y 是高频操作，本来也不该有动效。
+    /// 动效只做在窗口上，内容不自己跑动画：ClipPanelView 从窗口的**实时宽度**
+    /// 反推展开进度，所以动画的每一帧内容和窗口都是同一个宽度。
+    /// 旧版是「内容跑弹簧动画 + 窗口瞬间变宽」，两者不同步才会看起来像列表在回弹，
+    /// 当时干脆把动效整个去掉了；现在两边天然同帧，可以放心加回来。
+    /// → / ⌘Y 是高频操作，时长按面板的节奏取短一点（PanelMetrics.previewToggleDuration）。
     func setPreview(_ visible: Bool) {
         guard let coordinator, coordinator.store.previewVisible != visible else { return }
         coordinator.store.previewVisible = visible
-        resizeForCurrentState()
+        resizeForCurrentState(animated: true)
     }
 
     /// 展开 / 收起预览时调整窗口大小。
     /// 关键：保持左上角不动，只向右、向下扩展，这样列表内容不会跳动。
-    func resizeForCurrentState() {
+    func resizeForCurrentState(animated: Bool = false) {
         guard let coordinator, let panel else { return }
         let size = preferredSize(coordinator)
         guard panel.frame.size != size else { return }
@@ -214,7 +216,18 @@ final class PanelController {
         let topEdge = frame.maxY
         frame.size = size
         frame.origin.y = topEdge - size.height
-        panel.setFrame(clampedToScreen(frame, on: panel.screen), display: true)
+        let target = clampedToScreen(frame, on: panel.screen)
+
+        // 打开「减弱动态效果」时直接切换，和视图里其它动效的处理保持一致。
+        guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            panel.setFrame(target, display: true)
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = PanelMetrics.previewToggleDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(target, display: true)
+        }
     }
 
     /// 把窗口矩形夹在屏幕可视区域内。
@@ -260,12 +273,18 @@ final class PanelController {
         panel.setFrameOrigin(target.origin)
     }
 
-    // MARK: 键盘
+    // MARK: 键盘与鼠标监视器
 
     private func installMonitors() {
         removeMonitors()
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+        // keyDown 走键盘操作；leftMouseDown 只是顺手按落点更新「背景拖动窗口」的开关
+        // （见 updateDragPolicy），事件本身照常往下发。
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] event in
             guard let self, event.window === self.panel else { return event }
+            if event.type == .leftMouseDown {
+                self.updateDragPolicy(at: event.locationInWindow)
+                return event
+            }
             return self.handle(event) ? nil : event
         }
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
@@ -276,6 +295,29 @@ final class PanelController {
                 self?.hide(restoreFocus: false)
             }
         }
+    }
+
+    /// 预览窗格是「选文字」的区域，不是「拖窗口」的区域。
+    ///
+    /// 面板开着 `isMovableByWindowBackground`，而 SwiftUI 的文字选择视图
+    /// （`AppKitTextInteractionView`）和普通 NSView 一样返回 `mouseDownCanMoveWindow == true`
+    /// ——按钮、文本框、滚动视图这些真正的 AppKit 控件都是 false，所以只有它中招。
+    /// 结果就是拖拽被 AppKit 当成「拖动窗口背景」吃掉，预览里的文字永远选不中。
+    ///
+    /// 不能靠悬停判断：面板可能正好出现在光标底下，不产生 hover 事件。
+    /// 改成在 leftMouseDown 的本地监视器里按落点决定——监视器早于窗口处理这个事件
+    /// （实测：窗口读到的一定是刚设好的值），所以这一拖就是文字选择。
+    private func updateDragPolicy(at point: NSPoint) {
+        guard let panel, let coordinator else { return }
+        let listWidth = PanelMetrics.listWidth(
+            at: PanelMetrics.previewProgress(
+                windowWidth: panel.frame.width,
+                listWidth: coordinator.settings.panelWidth
+            ),
+            listWidth: coordinator.settings.panelWidth
+        )
+        // 预览窗格（含它左侧那条分隔线）里不拖动窗口，其余地方保持「拖背景移动面板」。
+        panel.isMovableByWindowBackground = point.x < listWidth
     }
 
     private func removeMonitors() {

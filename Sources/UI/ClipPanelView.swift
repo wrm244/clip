@@ -16,28 +16,45 @@ struct ClipPanelView: View {
 
     @FocusState private var searchFocused: Bool
 
-    /// 列表宽度。展开预览时至少保留 PanelMetrics.minListWidth，
-    /// 口径必须和 PanelMetrics.panelWidth 一致，否则左侧会多出空白。
-    private var listWidth: Double {
-        store.previewVisible ? max(settings.panelWidth, PanelMetrics.minListWidth) : settings.panelWidth
+    /// 展开进度：0 = 完全收起，1 = 完全展开。
+    ///
+    /// 刻意从**窗口的实际宽度**反推，而不是直接读 `store.previewVisible`：
+    /// 展开 / 收起时窗口是逐帧变宽的，内容如果一步到位，动画期间就会比窗口宽
+    /// （右边被裁掉）或者比窗口窄（右边露出空白），也就是旧版那种「列表回弹」。
+    /// 由宽度反推之后，内容的每一帧都正好等于窗口宽度，两边不需要各自对齐动画参数。
+    private func previewProgress(width: CGFloat) -> CGFloat {
+        PanelMetrics.previewProgress(windowWidth: width, listWidth: settings.panelWidth)
     }
 
-    /// 宽度不够时分类只显示图标。
-    private var isCompact: Bool { listWidth < 620 }
+    /// 宽度不够时分类只显示图标。按展开后的列表宽度判断，
+    /// 免得展开动画中途在两种排布之间跳一下。
+    private var isCompact: Bool {
+        PanelMetrics.expandedListWidth(listWidth: settings.panelWidth) < 620
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // 窗口高度由设定固定，只有展开预览时宽度会变；
+        // GeometryReader 拿到的就是窗口内容的实时尺寸，展开进度由它算出来。
+        GeometryReader { proxy in
+            panelBody(width: proxy.size.width)
+        }
+    }
+
+    private func panelBody(width: CGFloat) -> some View {
+        let progress = previewProgress(width: width)
+        return VStack(spacing: 0) {
             header
             separator
             HStack(spacing: 0) {
+                // 列表宽度随进度从 settings.panelWidth 长到 minListWidth
+                // （只有把面板设得比 minListWidth 还窄时才会真的变宽）。
                 list
-                    .frame(width: listWidth)
-                if store.previewVisible {
+                    .frame(width: PanelMetrics.listWidth(at: progress, listWidth: settings.panelWidth))
+                if progress > 0 {
+                    // 分隔线会吃掉「窗口宽度 − 列表 − 预览」的余量，正好是 progress（0→1pt），
+                    // 于是整行内容每一帧都严丝合缝地等于窗口宽度，不会挤出空白或错位。
                     separator
-                    // 不加任何 transition：窗口尺寸是瞬间变化的，
-                    // 内容再做淡入/位移就会和窗口不同步，看起来就是列表在回弹。
-                    PreviewPane(item: store.selectedItem)
-                        .frame(width: PanelMetrics.previewWidth)
+                    previewPane(progress: progress)
                 }
             }
             .frame(maxHeight: .infinity)
@@ -59,6 +76,16 @@ struct ClipPanelView: View {
             coordinator.quickLook.update(for: store.selectedItem)
         }
         .onAppear { focusSearch() }
+    }
+
+    /// 右侧预览窗格。内容固定 previewWidth 宽、靠左对齐，进度只决定「露出多少」：
+    /// 这样展开过程中文字不会重排，窗格也不会被拉伸变形。
+    private func previewPane(progress: CGFloat) -> some View {
+        PreviewPane(item: store.selectedItem)
+            .frame(width: PanelMetrics.previewWidth * progress, alignment: .topLeading)
+            .clipped()
+            // 刚露头那一小条边缘很硬，配一点淡入会柔和很多。
+            .opacity(min(1, progress * 1.5))
     }
 
     private var separator: some View { ClipSeparator() }

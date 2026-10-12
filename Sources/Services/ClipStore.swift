@@ -144,12 +144,29 @@ final class ClipStore {
             }
         }
 
-        // 阶段二（无 await，原子）：去重 → 插入 → 排序 → 淘汰 → 重建视图。
-        // 去重和插入之间绝不能有挂起点：两条相同内容并发采集时，
-        // 挂起窗口里的另一条查不到刚插进来的这条，同一条目就会入库两次。
-        if !item.contentHash.isEmpty,
-           let duplicate = items.firstIndex(where: { $0.contentHash == item.contentHash }) {
+        // 阶段二：先查一次重。命中就只更新用量，不用白写一遍图。
+        if let duplicate = duplicateIndex(of: item) {
             bump(duplicate)
+            return
+        }
+
+        // 阶段三（可挂起）：把二进制**先落盘**，再让条目进内存。
+        //
+        // 顺序是这里的关键：列表行和预览窗在条目进入 `visibleItems` 的那一帧就会去读
+        // 缩略图 / 预览图（`ImageCache` 同步读文件）。文件还没写完就先入内存的话，
+        // 第一帧只能画占位图标，等下一次重绘才跳成真图——图片条目看起来就是
+        // 「缩略图闪一下 / 预览窗里的图晚一拍出现，把下面的尺寸体积挤下去」。
+        for blob in blobWrites {
+            await storage.writeBlob(blob.data, named: blob.name)
+        }
+
+        // 阶段四（无 await，原子）：重查重 → 插入 → 排序 → 淘汰 → 重建视图。
+        // 上面落盘有挂起点，期间可能已经有另一条相同内容采集进来，所以要再查一次；
+        // 这一次查重和插入之间同样**不能**有挂起点，否则两条并发采集会双双入库。
+        if let duplicate = duplicateIndex(of: item) {
+            bump(duplicate)
+            // 刚写下的这版用不上了，删掉，别在 Blobs/ 里留垃圾。
+            await storage.removeBlobs(blobWrites.map { $0.name })
             return
         }
         items.insert(item, at: 0)
@@ -158,13 +175,15 @@ final class ClipStore {
         rebuildVisible()
         notifyHistoryChanged()
 
-        // 阶段三（可挂起）：落盘 blob、排队落库。内存状态已就位，
-        // 这里的 I/O 顺序不影响正确性。
-        for blob in blobWrites {
-            await storage.writeBlob(blob.data, named: blob.name)
-        }
+        // 阶段五（可挂起）：排队落库。内存状态已就位，这里的 I/O 顺序不影响正确性。
         let snapshot = item
         enqueueSave { [storage] in await storage.insert(snapshot) }
+    }
+
+    /// 内存里是否已有内容相同的条目（图片按转码后的 hash 判重）。
+    private func duplicateIndex(of item: ClipItem) -> Int? {
+        guard !item.contentHash.isEmpty else { return nil }
+        return items.firstIndex { $0.contentHash == item.contentHash }
     }
 
     /// 同一条内容被重复复制：只更新时间与次数，不新增记录。

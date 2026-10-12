@@ -11,6 +11,8 @@ struct ClipRowView: View {
     let rowHeight: CGFloat
 
     @State private var isHovering = false
+    /// 上一次单击的时间，用来自己识别双击（见 `handleTap`）。
+    @State private var lastTapAt: Date?
 
     var body: some View {
         HStack(spacing: 11) {
@@ -31,10 +33,28 @@ struct ClipRowView: View {
         .background(background)
         .contentShape(.rect)
         .onHover { isHovering = $0 }
-        .onTapGesture(count: 2) { coordinator.paste(item) }
-        .onTapGesture { coordinator.store.selectedID = item.id }
+        .onTapGesture(perform: handleTap)
         .contextMenu { menu }
         .animation(.snappy(duration: 0.16), value: isSelected)
+    }
+
+    /// 单击立即选中；两次单击落在系统双击间隔内则按双击处理（粘贴）。
+    ///
+    /// 这里刻意不用 `.onTapGesture(count: 2)`：SwiftUI 会为它装上一个「需要两次点击」
+    /// 的手势识别器，而 AppKit 的手势识别器在得出结论之前会**扣住主键鼠标事件**。
+    /// 「是不是双击」要等双击间隔过去才有结论，于是整行的单击都被一起扣住——
+    /// 连行尾的删除／固定按钮也跑不掉（实测延迟约等于 `NSEvent.doubleClickInterval`，
+    /// 默认 0.5s，就是「点了半秒才选中」的来源）。
+    /// 现在只用单击手势（识别即触发，不等待），双击由时间判定补上，语义不变。
+    private func handleTap() {
+        let now = Date()
+        if let lastTapAt, now.timeIntervalSince(lastTapAt) <= NSEvent.doubleClickInterval {
+            self.lastTapAt = nil
+            coordinator.paste(item)
+        } else {
+            lastTapAt = now
+            coordinator.store.selectedID = item.id
+        }
     }
 
     // MARK: 内容
