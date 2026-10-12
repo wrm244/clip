@@ -14,7 +14,7 @@ struct PreviewPane: View {
                 ScrollView {
                     detail(for: item)
                         .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(width: Self.scrollContentWidth, alignment: .leading)
                 }
                 // 每条从顶部开始看：不给 id 的话 ScrollView 会沿用上一条的滚动位置
                 // （只有内容类型变了才会自己归零），长文本 → 短文本、大图 → 小图
@@ -31,6 +31,21 @@ struct PreviewPane: View {
     }
 
     private var separator: some View { ClipSeparator() }
+
+    /// 滚动内容的固定宽度：预览窗宽 − 经典式滚动条要占掉的宽度（覆盖式浮在内容上，不占）。
+    ///
+    /// 这里必须把宽度**钉死**，不能给内容 `maxWidth: .infinity` 随视口走：
+    /// 图片按宽度等比缩放，而经典式滚动条出现／消失会改变内容区宽度（AppKit 会重新
+    /// 排布 NSScrollView），于是形成死循环——滚动条出现 → 内容区变窄 → 图变矮 →
+    /// 内容不再超高 → 滚动条消失 → 内容区变宽 → 图变高 → 再度超高 → 滚动条再现……
+    /// 每帧往返一次，表现就是滚动条疯狂闪烁、图片尺寸来回闪跳。
+    /// 宽度钉死后，内容高度与滚动条的有无彻底解耦，两种滚动条样式下循环都不成立。
+    private static var scrollContentWidth: CGFloat {
+        let reserve: CGFloat = NSScroller.preferredScrollerStyle == .legacy
+            ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+            : 0
+        return PanelMetrics.previewWidth - reserve
+    }
 
     // MARK: 头部
 

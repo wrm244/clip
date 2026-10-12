@@ -1,28 +1,12 @@
 import AppKit
 import Observation
 import QuartzCore
-import QuickLookUI
 import SwiftUI
 
 /// 无边框、可成为 key window 的浮层窗口。
 final class ClipPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-
-    // Quick Look 面板沿响应链找 controller（见 QLPreviewPanel.h），
-    // 窗口本身就在链上，所以在这里接下请求再转交给 QuickLookPresenter。
-    // 必须写在类体里，Swift 不允许在 extension 里 override。
-    nonisolated override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
-        MainActor.assumeIsolated { AppCoordinator.shared.quickLook.wantsControl }
-    }
-
-    nonisolated override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        MainActor.assumeIsolated { AppCoordinator.shared.quickLook.beginControl(panel) }
-    }
-
-    nonisolated override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        MainActor.assumeIsolated { AppCoordinator.shared.quickLook.endControl(panel) }
-    }
 }
 
 /// 管理快速呼出面板的显示、定位与键盘交互。
@@ -91,8 +75,6 @@ final class PanelController {
     func hide(restoreFocus: Bool = true) {
         guard let panel else { return }
         removeMonitors()
-        // 一并收起 Quick Look，否则它会留在屏幕上并继续持有按键。
-        coordinator?.quickLook.dismiss()
         panel.orderOut(nil)
         if isVisible {
             isVisible = false
@@ -105,13 +87,6 @@ final class PanelController {
                 app.activate()
             }
         }
-    }
-
-    /// 让呼出面板重新成为 key window。
-    /// 给 Quick Look 关闭后用：QL 面板是独立的 key window，关掉后焦点要还回来。
-    func refocus() {
-        guard isVisible, let panel else { return }
-        panel.makeKeyAndOrderFront(nil)
     }
 
     // MARK: 窗口搭建
@@ -353,11 +328,6 @@ final class PanelController {
                 return true
             case 126: // ↑
                 coordinator.store.moveSelection(by: -1)
-                return true
-            case 49: // 空格：Quick Look 预览
-                // 搜索框里有内容时把空格留给文本输入
-                guard coordinator.store.searchText.isEmpty else { return false }
-                coordinator.toggleQuickLook()
                 return true
             case 124, 123: // → 展开预览 / ← 收起预览
                 // 搜索框里有内容时把左右键留给光标编辑

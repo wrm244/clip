@@ -10,6 +10,12 @@ struct ClipToast: Identifiable, Equatable, Sendable {
     var symbol: String
 }
 
+/// 后台搜索的返回值：命中的条目 id（按原顺序）+ 这次新构建的索引项。
+private struct SearchRebuildResult: Sendable {
+    var ids: [ClipItem.ID]
+    var index: [ClipItem.ID: String]
+}
+
 /// 剪贴板历史的内存模型。所有改动都会增量写入 SwiftData（每笔写操作显式落库，
 /// 不再全量重写历史文件），列表始终按“固定优先 + 最近使用”排序。
 @Observable
@@ -22,7 +28,7 @@ final class ClipStore {
     private(set) var filterCounts: [ClipFilter: Int] = [:]
 
     var searchText: String = "" {
-        didSet { if searchText != oldValue { rebuildVisible() } }
+        didSet { if searchText != oldValue { scheduleSearchRebuild() } }
     }
 
     var filter: ClipFilter = .all {
@@ -47,14 +53,30 @@ final class ClipStore {
     /// 已排队写入的代数：每排一笔自增。`drainSaves` 靠它识别等待期间有没有新写入插队。
     private var saveGeneration: UInt64 = 0
     private var toastTask: Task<Void, Never>?
-    /// 搜索索引缓存：id → 小写拼接的搜索文本。
+    /// 搜索索引缓存：id → 小写拼接的搜索文本（含本地化类型标题）。
     ///
     /// bump / markUsed / togglePin 只改 useCount / lastUsedAt / isPinned，
-    /// 不动内容字段，缓存始终有效；新条目在 rebuildVisible 里懒加载补齐，
-    /// 删除条目时随条目一起清掉。没有这层缓存，搜索框每敲一个字都要对
-    /// 全部历史重新拼接 + 小写化（单条文本上限 120KB，几百条时一次按键
-    /// 就是几十 MB 量级的字符串分配）。
+    /// 不动内容字段，缓存始终有效；新条目在重建可见列表时懒加载补齐，
+    /// 删除条目 / 切换语言时随条目一起清掉。
+    ///
+    /// 现在**所有条目都进索引**（旧版对 >64KB 的大文本不缓存，导致每个按键都要
+    /// 重新拼接 + 小写化）。配合搜索去抖，大文本也只会在首次搜索时算一次；代价是
+    /// 索引会再多占一份文本内存——但条目文本本身已在内存里，同一数量级。
     private var searchIndex: [ClipItem.ID: String] = [:]
+
+    /// id → 在 `items` 中的下标。取代各处 `items.firstIndex(where:)` 的 O(n) 线性查找。
+    /// 任何改变 `items` 内容或顺序的操作后都要调 `reindexItems()`。
+    private var itemsByID: [ClipItem.ID: Int] = [:]
+
+    /// id → 在 `visibleItems` 中的下标。键盘导航每按一次方向键都会查它，
+    /// 不能是线性查找。任何给 `visibleItems` 赋值后都要调 `reindexVisible()`。
+    private var visibleIndexByID: [ClipItem.ID: Int] = [:]
+
+    /// 搜索去抖 + 后台匹配的任务。连续输入期间前一个任务被取消。
+    private var searchTask: Task<Void, Never>?
+    /// 搜索代数：每次计划 / 同步重建可见列表都自增。后台任务完成时若代数已变，
+    /// 说明期间又输入了新关键词或发生了结构变化，本次结果作废。
+    private var searchGeneration: UInt64 = 0
 
     /// 行副标题（`detail`）缓存。文本条目要数全文字符数与行数，是 O(全文长度) 的
     /// 字素簇 / 字节扫描（实测单条 120KB 文本约 0.8ms），而列表行在悬停、
@@ -202,7 +224,7 @@ final class ClipStore {
 
     /// 使用（粘贴/复制）某条记录，把它提到最前面。
     func markUsed(_ id: ClipItem.ID) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = itemsByID[id], items.indices.contains(index) else { return }
         items[index].useCount += 1
         items[index].lastUsedAt = .now
         let updated = items[index]   // 排序前快照，排序后位置会变
@@ -215,7 +237,7 @@ final class ClipStore {
     // MARK: - 修改
 
     func togglePin(_ id: ClipItem.ID) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = itemsByID[id], items.indices.contains(index) else { return }
         items[index].isPinned.toggle()
         let updated = items[index]   // 排序前快照：固定状态切换后会换分组
         sortItems()
@@ -226,12 +248,13 @@ final class ClipStore {
     }
 
     func remove(_ id: ClipItem.ID) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = itemsByID[id], items.indices.contains(index) else { return }
         let removedID = items[index].id
         let blobs = items[index].blobNames
         searchIndex[removedID] = nil
         detailCache[removedID] = nil
         items.remove(at: index)
+        reindexItems()
         rebuildVisible()
         notifyHistoryChanged()
         enqueueSave { [storage] in
@@ -259,6 +282,7 @@ final class ClipStore {
             detailCache[item.id] = nil
         }
         items.removeAll { !(keepingPinned && $0.isPinned) }
+        reindexItems()
         rebuildVisible()
         notifyHistoryChanged()
         let ids = dropped.map(\.id)
@@ -274,6 +298,7 @@ final class ClipStore {
         items = []
         searchIndex = [:]
         detailCache = [:]
+        reindexItems()
         rebuildVisible()
         // 先把排队中的写入全部执行完再整体清空，避免在途写入把数据“复活”。
         await drainSaves()
@@ -283,13 +308,20 @@ final class ClipStore {
 
     // MARK: - 选择
 
+    /// 按 id 取全量历史里的条目（O(1)）。
+    func item(withID id: ClipItem.ID) -> ClipItem? {
+        guard let index = itemsByID[id], items.indices.contains(index) else { return nil }
+        return items[index]
+    }
+
     var selectedItem: ClipItem? {
-        guard let selectedID else { return nil }
-        return visibleItems.first { $0.id == selectedID }
+        guard let selectedID, let index = visibleIndexByID[selectedID],
+              visibleItems.indices.contains(index) else { return nil }
+        return visibleItems[index]
     }
 
     func ensureSelection() {
-        if let selectedID, visibleItems.contains(where: { $0.id == selectedID }) { return }
+        if let selectedID, visibleIndexByID[selectedID] != nil { return }
         selectedID = visibleItems.first?.id
     }
 
@@ -299,7 +331,7 @@ final class ClipStore {
 
     /// 直接选中指定条目（仅当它当前可见时生效）。
     func select(id: ClipItem.ID) {
-        guard visibleItems.contains(where: { $0.id == id }) else { return }
+        guard visibleIndexByID[id] != nil else { return }
         selectedID = id
     }
 
@@ -308,7 +340,7 @@ final class ClipStore {
             selectedID = nil
             return
         }
-        guard let current = visibleItems.firstIndex(where: { $0.id == selectedID }) else {
+        guard let currentID = selectedID, let current = visibleIndexByID[currentID] else {
             selectedID = visibleItems.first?.id
             return
         }
@@ -317,7 +349,7 @@ final class ClipStore {
     }
 
     func removeSelected() {
-        guard let id = selectedID, let index = visibleItems.firstIndex(where: { $0.id == id }) else { return }
+        guard let id = selectedID, let index = visibleIndexByID[id] else { return }
         remove(id)
         guard !visibleItems.isEmpty else {
             selectedID = nil
@@ -371,6 +403,7 @@ final class ClipStore {
             if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
             return lhs.lastUsedAt > rhs.lastUsedAt
         }
+        reindexItems()
     }
 
     /// 行副标题。走缓存，避免每次重绘都对超长文本重新做字符 / 行数统计。
@@ -381,27 +414,34 @@ final class ClipStore {
         return value
     }
 
-    /// 取条目的搜索文本，优先走缓存。
-    /// 超大文本不缓存，避免索引本身吃掉几十 MB 内存。
+    /// 取条目的搜索文本，优先走缓存。所有条目都进缓存（含大文本），
+    /// 避免每个按键对同一条大文本重复拼接 + 小写化。
     private func searchHaystack(for item: ClipItem) -> String {
         if let cached = searchIndex[item.id] { return cached }
         let value = item.searchHaystack
-        if value.utf8.count <= 65_536 {
-            searchIndex[item.id] = value
-        }
+        searchIndex[item.id] = value
         return value
     }
 
-    private func rebuildVisible() {
-        // 分词只做一次；匹配时对每条历史是纯 contains 扫描
-        let keywords = searchText
+    /// 把搜索框文本切成小写关键词（空格分词）。空串 → 空数组。
+    private func normalizedKeywords(_ text: String) -> [Substring] {
+        text
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
             .split(separator: " ")
-        // 关键词为空时必须走单独的短路分支：searchHaystack(for:) 是实参，
-        // 会在进入 matches 之前就被求值——否则每次打开面板 / 清空搜索框，
-        // 都要把全部历史重新拼接 + 小写化一遍（实测单条 120KB 文本约 2.3ms，
-        // 几百条就是几百毫秒的主线程卡顿），而这一步对空搜索毫无用处。
+    }
+
+    /// 同步重建可见列表。用于结构变化（增删 / 排序 / 切分类）以及不需要去抖的场景。
+    ///
+    /// 关键词匹配走已经缓存的搜索索引，所以这里基本只是 O(n) 的 contains 扫描；
+    /// 真正的字符串拼接 / 小写化只会发生在索引还没建好的条目上。
+    private func rebuildVisible() {
+        // 代数自增，作废任何在途的异步搜索结果（它基于更旧的快照）。
+        searchGeneration &+= 1
+        searchTask?.cancel()
+        // 分词只做一次；匹配时对每条历史是纯 contains 扫描。
+        let keywords = normalizedKeywords(searchText)
+        // 关键词为空时必须走单独的短路分支，不要对每条都求值 searchHaystack。
         if keywords.isEmpty {
             visibleItems = items.filter { filter.matches($0) }
         } else {
@@ -410,6 +450,83 @@ final class ClipStore {
                 return item.matches(keywords: keywords, haystack: searchHaystack(for: item))
             }
         }
+        finishRebuild()
+    }
+
+    /// 搜索文本变化：去抖后把匹配放到后台算，主线程只落最终结果。
+    ///
+    /// 关键词匹配是 O(条目数 × 文本长度) 的字符串扫描（首次还要拼接 + 小写化），
+    /// 直接同步跑会在每个按键上卡主线程。这里先等 120ms，连续输入只算最后一次。
+    private func scheduleSearchRebuild() {
+        // 清空搜索（或只剩空白）时立即同步重建：空关键词只是 O(n) 的 filter，
+        // 没必要去抖，否则清空后会先看到 120ms 的旧结果。
+        guard !normalizedKeywords(searchText).isEmpty else {
+            rebuildVisible()
+            return
+        }
+        searchTask?.cancel()
+        searchGeneration &+= 1
+        let generation = searchGeneration
+        searchTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled, let self else { return }
+            await self.performSearchRebuild(generation: generation)
+        }
+    }
+
+    /// 在后台线程算好命中条目的 id 与新增的索引项，回到主线程落结果。
+    private func performSearchRebuild(generation: UInt64) async {
+        let keywords = normalizedKeywords(searchText)
+        let snapshot = items
+        let filter = self.filter
+        let cachedIndex = searchIndex
+        // `L()` 是 MainActor：类型标题必须先在主线程取好，再带进后台任务。
+        let kindTitles = Dictionary(
+            uniqueKeysWithValues: ClipKind.allCases.map { ($0, $0.title.lowercased()) }
+        )
+
+        let result = await Task.detached(priority: .userInitiated) { () -> SearchRebuildResult in
+            var index = cachedIndex
+            var ids: [ClipItem.ID] = []
+            ids.reserveCapacity(snapshot.count)
+            if keywords.isEmpty {
+                for item in snapshot where filter.matches(item) { ids.append(item.id) }
+            } else {
+                for item in snapshot {
+                    guard filter.matches(item) else { continue }
+                    let haystack: String
+                    if let cached = index[item.id] {
+                        haystack = cached
+                    } else {
+                        let body = item.searchableBody
+                        let title = kindTitles[item.kind] ?? ""
+                        let value = body.isEmpty ? title : title + "\n" + body
+                        index[item.id] = value
+                        haystack = value
+                    }
+                    if item.matches(keywords: keywords, haystack: haystack) {
+                        ids.append(item.id)
+                    }
+                }
+            }
+            return SearchRebuildResult(ids: ids, index: index)
+        }.value
+
+        // 期间又输入了新关键词 / 发生了结构变化 → 本次结果作废。
+        guard generation == searchGeneration else { return }
+        // 只补写仍然存在、且尚未缓存的索引项：被删除的条目不要借机复活。
+        let liveIDs = Set(snapshot.map(\.id))
+        for (id, value) in result.index where searchIndex[id] == nil && liveIDs.contains(id) {
+            searchIndex[id] = value
+        }
+        let byID = Dictionary(snapshot.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        visibleItems = result.ids.compactMap { byID[$0] }
+        finishRebuild()
+    }
+
+    /// 可见列表算好后统一收尾：更新下标的索引、分类计数、选中项。
+    private func finishRebuild() {
+        reindexVisible()
         // 各分类计数一次遍历统计（原来是每个分类各 filter 一遍，7 次 O(n)）
         var counts = [ClipFilter: Int]()
         counts.reserveCapacity(ClipFilter.allCases.count)
@@ -429,6 +546,18 @@ final class ClipStore {
             filter = .all
         }
         ensureSelection()
+    }
+
+    private func reindexItems() {
+        itemsByID = Dictionary(
+            uniqueKeysWithValues: items.enumerated().map { ($0.element.id, $0.offset) }
+        )
+    }
+
+    private func reindexVisible() {
+        visibleIndexByID = Dictionary(
+            uniqueKeysWithValues: visibleItems.enumerated().map { ($0.element.id, $0.offset) }
+        )
     }
 
     /// 按“条数上限 / 保留天数”过滤，固定条目永不淘汰。
@@ -463,6 +592,7 @@ final class ClipStore {
         let keptIDs = Set(kept.map(\.id))
         let dropped = items.filter { !keptIDs.contains($0.id) }
         items = kept
+        reindexItems()
         for item in dropped {
             searchIndex[item.id] = nil
             detailCache[item.id] = nil

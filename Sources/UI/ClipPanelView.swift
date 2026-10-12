@@ -71,10 +71,6 @@ struct ClipPanelView: View {
         .onChange(of: coordinator.panel.isVisible) { _, visible in
             if visible { focusSearch() }
         }
-        // 鼠标点选（Quick Look 打开时 QL 面板是 key window）也要让预览跟着换。
-        .onChange(of: store.selectedID) { _, _ in
-            coordinator.quickLook.update(for: store.selectedItem)
-        }
         .onAppear { focusSearch() }
     }
 
@@ -251,7 +247,6 @@ struct ClipPanelView: View {
             } else {
                 KeyHint(keys: "⌥↵", label: L("纯文本"))
                 KeyHint(keys: "→", label: L("预览"))
-                KeyHint(keys: "space", label: L("快速查看"))
                 KeyHint(keys: "⌘P", label: L("固定"))
                 KeyHint(keys: "⌘⌫", label: L("删除"))
             }

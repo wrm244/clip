@@ -14,7 +14,6 @@
 | 贴着光标弹出 | 面板出现在鼠标旁（右下优先，空间不足自动翻到左／上方并夹在屏幕内）；可在设置里改回屏幕上方居中 |
 | 紧凑弹窗 | 高度固定为你设定的值，条目超出时列表内滚动；默认不显示预览，就是一个类似 Maccy 的小弹窗 |
 | 预览按需展开 | **→**（或 ⌘Y）向右展开预览面板，**左上角固定不动**、带 0.24s 宽度动画，列表不会跳；**←**（或 ⌘Y）收起 |
-| Quick Look | **空格**直接调系统 Quick Look 预览选中条目（图片、文件、文本、链接、颜色都能看）；预览中 ↑↓ 换条、空格/⎋ 关闭、↵ 粘贴 |
 | 内容识别 | 文本 / 链接 / 颜色 / 图片 / 文件，自动分类并记录来源应用 |
 | 搜索与筛选 | 顶部搜索框实时过滤；分类药丸带计数，窄弹窗下自动只留图标 |
 | 键盘操作 | ↑↓ 选择、↵ 粘贴、⌥↵ 纯文本、→← 展开/收起预览、⌘P 固定、⌘⌫ 删除、⌘1–9 直接粘贴第 N 条 |
@@ -146,7 +145,6 @@ URL Scheme：`clip://show`、`clip://toggle`、`clip://menu`（打开菜单栏�
 | ⌘⌫ | 删除选中条目 |
 | → | 展开预览（搜索框为空时） |
 | ← | 收起预览（搜索框为空时） |
-| 空格 | 呼出 / 收起 Quick Look 预览 |
 | ⌘Y | 展开 / 收起预览 |
 | ⌘, | 打开设置 |
 | ⌘1 … ⌘9 | 直接粘贴第 N 条 |
@@ -306,7 +304,6 @@ Sources/
     SettingsView.swift      设置内容：侧边栏 + 分组表单（通用 / 外观 / 快捷键 / 关于）
     SettingsWindow.swift    设置窗口本身：标准 NSWindow，负责开窗、尺寸与位置记忆
     PanelContainerView.swift 面板窗口形状：macOS 27 原生圆角 API + 裁剪
-    QuickLookPresenter.swift 空格键 Quick Look：驱动 QLPreviewPanel，把文本/颜色落成临时文件
     Components.swift        分类药丸、键帽、提示条、空状态
   Support/
     Log.swift               统一 os.Logger
@@ -351,14 +348,6 @@ SwiftData 相关的几个关键决策：
 相比 `CGEventTap` 不需要辅助功能权限。
 
 **防回环**：写回剪贴板时带一个 `com.river.clip.marker` 类型，轮询时看到它就跳过。
-
-**Quick Look**：直接驱动 AppKit 的 `QLPreviewPanel`，而不是 SwiftUI 的 `.quickLookPreview(_:)`
-（后者只接受 `URL`，处理不了还在内存里的文本/链接/颜色）。`QLPreviewPanel` 是沿**响应链**找
-controller 的：窗口 `ClipPanel` 实现 `acceptsPreviewPanelControl` / `beginPreviewPanelControl` /
-`endPreviewPanelControl` 并把请求转给 `QuickLookPresenter`，光设 `dataSource`/`delegate` 不会显示
-（会报 “panel has no controller”）。文本类条目按需落成临时文件（同一 id 只写一次）再交给系统渲染，
-图片直接用 `Blobs/` 里的原图，颜色临时画一张色卡。预览期间 QL 面板是 key window，
-所以按键监听挂在它自己身上：空格/⎋ 关闭、↑↓ 换条、↵ 粘贴。
 
 **桌面小组件**：小组件是独立沙盒进程，打不开主 App 的 SwiftData 库；而本工程是免签构建，
 App Group 会被系统忽略（trustd 报 `invalid application signature`）。所以走第三条路：主 App（未沙盒）

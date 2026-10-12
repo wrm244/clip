@@ -69,7 +69,8 @@ enum ClipFilter: String, CaseIterable, Hashable, Identifiable, Sendable {
         }
     }
 
-    func matches(_ item: ClipItem) -> Bool {
+    /// 标为 nonisolated：后台线程批量匹配时会调用它。
+    nonisolated func matches(_ item: ClipItem) -> Bool {
         switch self {
         case .all: true
         case .text: item.kind == .text
@@ -192,8 +193,9 @@ extension ClipItem {
     /// 是否命中搜索关键词（空格分词，全部命中才算匹配）。
     ///
     /// 搜索时每敲一个字会对全部条目各匹配一次，分词和文本拼接必须由调用方
-    /// （ClipStore 的 rebuildVisible）提前做好、缓存复用，不能在这里重复做。
-    func matches(keywords: some Sequence<Substring>, haystack: String) -> Bool {
+    /// （ClipStore）提前做好、缓存复用，不能在这里重复做。
+    /// 标为 nonisolated：批量匹配会放到后台线程执行（见 ClipStore.performSearchRebuild）。
+    nonisolated func matches(keywords: some Sequence<Substring>, haystack: String) -> Bool {
         var iterator = keywords.makeIterator()
         guard let first = iterator.next() else { return true }
         if !haystack.contains(first) { return false }
@@ -205,10 +207,20 @@ extension ClipItem {
 
     /// 条目的全文检索文本：类型标题 + 文本 + 文件路径 + 来源，已小写化。
     ///
-    /// 供批量搜索专用：ClipStore 按 id 缓存后复用（超大文本不缓存），
-    /// 比较逻辑走上面的 matches(keywords:haystack:)。
+    /// 供批量搜索专用：ClipStore 按 id 缓存后复用。比较逻辑走上面的
+    /// matches(keywords:haystack:)。
     var searchHaystack: String {
-        var parts: [String] = [kind.title]
+        let body = searchableBody
+        let title = kind.title.lowercased()
+        return body.isEmpty ? title : title + "\n" + body
+    }
+
+    /// 检索文本里**不含本地化类型标题**的部分（文本 + 文件路径 + 来源），已小写化。
+    ///
+    /// 单独拆出来是为了能在后台线程构建搜索索引：类型标题要走 `L()`（MainActor），
+    /// 只能在主线程先取好再带进后台；这里只碰纯数据，标为 nonisolated 后可随便调。
+    nonisolated var searchableBody: String {
+        var parts: [String] = []
         if let text { parts.append(text) }
         if let filePaths { parts.append(contentsOf: filePaths) }
         if let sourceName { parts.append(sourceName) }

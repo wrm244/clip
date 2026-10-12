@@ -14,7 +14,6 @@ final class AppCoordinator {
     let paste: PasteService
     let panel: PanelController
     let menuBar: MenuBarPanelController
-    let quickLook: QuickLookPresenter
 
     private init() {
         let settings = ClipSettings()
@@ -25,7 +24,6 @@ final class AppCoordinator {
         self.paste = PasteService()
         self.panel = PanelController()
         self.menuBar = MenuBarPanelController()
-        self.quickLook = QuickLookPresenter()
     }
 
     // MARK: 启动
@@ -49,7 +47,6 @@ final class AppCoordinator {
             self?.store.applyRetentionNow()
         }
         panel.attach(coordinator: self)
-        quickLook.attach(coordinator: self)
         menuBar.attach(coordinator: self)
         menuBar.install()
         // 历史变化后导出桌面小组件快照（写入防抖、语言跟随界面设置）。
@@ -108,7 +105,7 @@ final class AppCoordinator {
     /// 桌面小组件点某一条（`clip://copy/<uuid>`）：复制它，并呼出面板给出反馈。
     /// 条目会顺手选中，用户可以直接回车粘贴到目标位置。
     func copyFromWidget(id: ClipItem.ID) {
-        guard let item = store.items.first(where: { $0.id == id }) else {
+        guard let item = store.item(withID: id) else {
             showPanel()
             return
         }
@@ -118,13 +115,6 @@ final class AppCoordinator {
 
     func hidePanel() {
         panel.hide()
-    }
-
-    // MARK: 预览
-
-    /// 空格键：用系统 Quick Look 预览当前选中条目。
-    func toggleQuickLook() {
-        quickLook.toggle(for: store.selectedItem)
     }
 
     /// 记下当前最前的非 Clip 应用（菜单栏面板粘贴时要把焦点还回去）。
