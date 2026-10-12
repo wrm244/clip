@@ -34,6 +34,10 @@ final class ClipStore {
     var toast: ClipToast?
     private(set) var isReady = false
 
+    /// 历史内容或顺序变化后的回调。桌面小组件据此导出只读快照（见 `WidgetFeedWriter`）。
+    /// 只关心「会影响快照」的变化，因此搜索框输入（只改 visibleItems）不触发。
+    @ObservationIgnored var onHistoryChange: (([ClipItem]) -> Void)?
+
     private let settings: ClipSettings
     private let storage = ClipStorage.shared
     /// 串行化落库任务：保证数据库写入顺序与内存改动顺序一致，避免新旧快照乱序互相覆盖。
@@ -81,6 +85,7 @@ final class ClipStore {
         sortItems()
         rebuildVisible()
         isReady = true
+        notifyHistoryChanged()
         // 被保留策略淘汰的条目同步从数据库删掉（固定条目永不淘汰）。
         let keptIDs = Set(items.map(\.id))
         let droppedIDs = loaded.map(\.id).filter { !keptIDs.contains($0) }
@@ -151,6 +156,7 @@ final class ClipStore {
         sortItems()
         prune()
         rebuildVisible()
+        notifyHistoryChanged()
 
         // 阶段三（可挂起）：落盘 blob、排队落库。内存状态已就位，
         // 这里的 I/O 顺序不影响正确性。
@@ -171,6 +177,7 @@ final class ClipStore {
         let updated = items[index]
         sortItems()
         rebuildVisible()
+        notifyHistoryChanged()
         enqueueUpdate(updated)
     }
 
@@ -182,6 +189,7 @@ final class ClipStore {
         let updated = items[index]   // 排序前快照，排序后位置会变
         sortItems()
         rebuildVisible()
+        notifyHistoryChanged()
         enqueueUpdate(updated)
     }
 
@@ -193,6 +201,7 @@ final class ClipStore {
         let updated = items[index]   // 排序前快照：固定状态切换后会换分组
         sortItems()
         rebuildVisible()
+        notifyHistoryChanged()
         enqueueUpdate(updated)
         showToast(updated.isPinned ? L("已固定") : L("已取消固定"), symbol: "pin.fill")
     }
@@ -205,6 +214,7 @@ final class ClipStore {
         detailCache[removedID] = nil
         items.remove(at: index)
         rebuildVisible()
+        notifyHistoryChanged()
         enqueueSave { [storage] in
             await storage.delete(ids: [removedID])
             await storage.removeBlobs(blobs)
@@ -217,6 +227,7 @@ final class ClipStore {
         let before = items.count
         prune()
         rebuildVisible()
+        notifyHistoryChanged()
         if items.count < before {
             showToast(L("已按保留策略清理 %ld 条", before - items.count), symbol: "trash.fill")
         }
@@ -230,6 +241,7 @@ final class ClipStore {
         }
         items.removeAll { !(keepingPinned && $0.isPinned) }
         rebuildVisible()
+        notifyHistoryChanged()
         let ids = dropped.map(\.id)
         let blobs = dropped.flatMap(\.blobNames)
         enqueueSave { [storage] in
@@ -247,6 +259,7 @@ final class ClipStore {
         // 先把排队中的写入全部执行完再整体清空，避免在途写入把数据“复活”。
         await drainSaves()
         await storage.eraseEverything()
+        notifyHistoryChanged()
     }
 
     // MARK: - 选择
@@ -263,6 +276,12 @@ final class ClipStore {
 
     func selectFirst() {
         selectedID = visibleItems.first?.id
+    }
+
+    /// 直接选中指定条目（仅当它当前可见时生效）。
+    func select(id: ClipItem.ID) {
+        guard visibleItems.contains(where: { $0.id == id }) else { return }
+        selectedID = id
     }
 
     func moveSelection(by delta: Int) {
@@ -306,6 +325,7 @@ final class ClipStore {
         searchIndex = [:]
         detailCache = [:]
         rebuildVisible()
+        notifyHistoryChanged()
     }
 
     // MARK: - 提示
@@ -322,6 +342,10 @@ final class ClipStore {
     }
 
     // MARK: - 内部
+
+    private func notifyHistoryChanged() {
+        onHistoryChange?(items)
+    }
 
     private func sortItems() {
         items.sort { lhs, rhs in

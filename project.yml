@@ -42,6 +42,10 @@ targets:
     platform: macOS
     sources:
       - path: Sources
+    dependencies:
+      # 桌面小组件扩展。嵌进 Clip.app/Contents/PlugIns。
+      - target: ClipWidget
+        embed: true
     settings:
       base:
         PRODUCT_NAME: Clip
@@ -73,6 +77,49 @@ targets:
           - CFBundleURLName: com.river.Clip
             CFBundleURLSchemes:
               - clip
+
+  # 桌面小组件。
+  #
+  # 独立沙盒进程：直接读不了主 App 的 SwiftData 库，也用不了 App Group
+  # （免签构建下该权限会被系统忽略）。改为读取主 App 导出的只读快照，
+  # 只读权限由 ClipWidget.entitlements 里的 temporary-exception 提供。
+  ClipWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Widget
+        excludes:
+          - Info.plist
+          - "*.entitlements"
+      # 快照模型与主 App 共用，避免两边字段漂移。
+      - path: Sources/Support/WidgetFeed.swift
+    settings:
+      base:
+        PRODUCT_NAME: ClipWidget
+        PRODUCT_BUNDLE_IDENTIFIER: com.river.Clip.Widget
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        CODE_SIGN_ENTITLEMENTS: Widget/ClipWidget.entitlements
+        # 小组件是纯值类型 + 时间线提供者，不需要 MainActor 默认隔离；
+        # 这样能直接满足 WidgetKit 里非 MainActor 的 TimelineProvider 要求。
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+          - "@executable_path/../../../../Frameworks"
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleName: ClipWidget
+        CFBundleDisplayName: Clip
+        CFBundlePackageType: XPC!
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
 schemes:
   Clip:

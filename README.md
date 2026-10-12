@@ -14,6 +14,7 @@
 | 贴着光标弹出 | 面板出现在鼠标旁（右下优先，空间不足自动翻到左／上方并夹在屏幕内）；可在设置里改回屏幕上方居中 |
 | 紧凑弹窗 | 高度固定为你设定的值，条目超出时列表内滚动；默认不显示预览，就是一个类似 Maccy 的小弹窗 |
 | 预览按需展开 | **→**（或 ⌘Y）向右展开预览面板，**左上角固定不动**，列表不会跳；**←**（或 ⌘Y）收起 |
+| Quick Look | **空格**直接调系统 Quick Look 预览选中条目（图片、文件、文本、链接、颜色都能看）；预览中 ↑↓ 换条、空格/⎋ 关闭、↵ 粘贴 |
 | 内容识别 | 文本 / 链接 / 颜色 / 图片 / 文件，自动分类并记录来源应用 |
 | 搜索与筛选 | 顶部搜索框实时过滤；分类药丸带计数，窄弹窗下自动只留图标 |
 | 键盘操作 | ↑↓ 选择、↵ 粘贴、⌥↵ 纯文本、→← 展开/收起预览、⌘P 固定、⌘⌫ 删除、⌘1–9 直接粘贴第 N 条 |
@@ -23,6 +24,7 @@
 | 菜单栏面板 | `NSStatusItem` + macOS 27 的「展开界面」会话（`NSStatusItemExpandedInterfaceDelegate`），面板本体 `NSGlassEffectView`；面板尺寸固定、底部动作永不被挤出 |
 | 独立设置窗口 | 标准独立 `NSWindow`，**固定 720×640**，侧边栏分栏（通用／外观／快捷键／关于）；菜单栏、面板齿轮、⌘,、`clip://settings` 都能打开，还支持 `clip://settings/appearance` 直接定位到某一栏 |
 | 多语言 | 中文（简体）/ English，设置里可切；**切换立即生效**，无需重启；「跟随系统」按 macOS 首选语言自动选择 |
+| 桌面小组件 | 通知中心 / 桌面上显示最近几条历史；点某条即复制，点空白处呼出面板（主 App 导出只读快照，小组件无需额外权限） |
 | 其它 | 登录时启动、暂停记录、固定置顶、保留天数／条数上限、深浅色、全局快捷键自定义 |
 
 ## 界面设计
@@ -121,6 +123,7 @@ URL Scheme：`clip://show`、`clip://toggle`、`clip://menu`（打开菜单栏�
 | ⌘⌫ | 删除选中条目 |
 | → | 展开预览（搜索框为空时） |
 | ← | 收起预览（搜索框为空时） |
+| 空格 | 呼出 / 收起 Quick Look 预览 |
 | ⌘Y | 展开 / 收起预览 |
 | ⌘, | 打开设置 |
 | ⌘1 … ⌘9 | 直接粘贴第 N 条 |
@@ -255,6 +258,7 @@ Sources/
     ContentHash.swift       SHA-256 内容指纹（CryptoKit）
     ClipStorage.swift       actor，SwiftData 记录 CRUD（每笔写显式 save）+ Blobs/ 文件读写与清理
     ClipStore.swift         @Observable 列表状态：去重、排序、筛选、淘汰、串行化增量落库
+    WidgetFeedWriter.swift  主 App 侧：把最近历史导出成小组件只读快照（防抖写盘 + 刷新时间线）
     HotKeyCenter.swift      Carbon 全局热键
     PasteService.swift      辅助功能授权检查 + CGEvent ⌘V 回填
     ImageCache.swift        NSCache 缩略图 / 预览图缓存
@@ -270,13 +274,21 @@ Sources/
     SettingsView.swift      设置内容：侧边栏 + 分组表单（通用 / 外观 / 快捷键 / 关于）
     SettingsWindow.swift    设置窗口本身：标准 NSWindow，负责开窗、尺寸与位置记忆
     PanelContainerView.swift 面板窗口形状：macOS 27 原生圆角 API + 裁剪
+    QuickLookPresenter.swift 空格键 Quick Look：驱动 QLPreviewPanel，把文本/颜色落成临时文件
     Components.swift        分类药丸、键帽、提示条、空状态
   Support/
     Log.swift               统一 os.Logger
     Localization.swift      运行时本地化：AppLanguage / Localization 单例 / L(_:)
     LocalizationEnglish.swift 英文文案表（key 为中文源文本）
+    WidgetFeed.swift        主 App 与小组件共享的快照模型 + 磁盘路径（getpwuid 取真实 home）
     AppKitExtras.swift      颜色工具
   Resources/Assets.xcassets AppIcon
+
+Widget/
+  ClipWidget.swift          小组件本体：TimelineProvider + 各尺寸视图
+  ClipWidgetBundle.swift    小组件扩展入口
+  ClipWidget.entitlements   沙盒 + 只读临时例外（读主 App 的快照目录）
+  Info.plist                由 project.yml 生成
 ```
 
 ## 架构要点
@@ -308,6 +320,22 @@ SwiftData 相关的几个关键决策：
 
 **防回环**：写回剪贴板时带一个 `com.river.clip.marker` 类型，轮询时看到它就跳过。
 
+**Quick Look**：直接驱动 AppKit 的 `QLPreviewPanel`，而不是 SwiftUI 的 `.quickLookPreview(_:)`
+（后者只接受 `URL`，处理不了还在内存里的文本/链接/颜色）。`QLPreviewPanel` 是沿**响应链**找
+controller 的：窗口 `ClipPanel` 实现 `acceptsPreviewPanelControl` / `beginPreviewPanelControl` /
+`endPreviewPanelControl` 并把请求转给 `QuickLookPresenter`，光设 `dataSource`/`delegate` 不会显示
+（会报 “panel has no controller”）。文本类条目按需落成临时文件（同一 id 只写一次）再交给系统渲染，
+图片直接用 `Blobs/` 里的原图，颜色临时画一张色卡。预览期间 QL 面板是 key window，
+所以按键监听挂在它自己身上：空格/⎋ 关闭、↑↓ 换条、↵ 粘贴。
+
+**桌面小组件**：小组件是独立沙盒进程，打不开主 App 的 SwiftData 库；而本工程是免签构建，
+App Group 会被系统忽略（trustd 报 `invalid application signature`）。所以走第三条路：主 App（未沙盒）
+把最近 12 条预渲染成一份只读快照 `Widget/feed.json` + `Widget/Thumbs/`（标题、副标题都已按当前界面语言
+渲染好，小组件不必带本地化表），写完调 `WidgetCenter.reloadAllTimelines()`；
+小组件在 entitlements 里声明 `temporary-exception.files.home-relative-path.read-only` 只读该目录。
+因为沙盒里 `NSHomeDirectory()` 会指向自己的容器，两边都用 `getpwuid(getuid()).pw_dir` 拼真实 home。
+快照写入做了 700ms 防抖，历史变化频繁时合并成一次写盘。
+
 **数据安全**：条目存进 SwiftData（`Clip.store`，底层 SQLite），每次写操作显式 `save()`，
 强杀进程也不丢数据；数据库打开失败时回退到内存容器并打日志，绝不用空库覆盖原文件；
 启动时还会让位给已经存在的另一份副本。
@@ -317,7 +345,8 @@ SwiftData 相关的几个关键决策：
 ```
 ~/Library/Application Support/Clip/
 ├── Clip.store      SwiftData 条目数据库（底层 SQLite，随写随存；另生成 -wal / -shm）
-└── Blobs/          PNG 原图、JPG 缩略图与 RTF 富文本
+├── Blobs/          PNG 原图、JPG 缩略图与 RTF 富文本
+└── Widget/         桌面上小组件读的只读快照（feed.json + Thumbs/），主 App 自动维护
 ```
 
 设置存在 `~/Library/Preferences/com.river.Clip.plist`。设置里的「在访达中显示」可以直接跳过去。
@@ -329,3 +358,7 @@ SwiftData 相关的几个关键决策：
   分发时请换成自己的开发者证书。
 - 「登录时启动」用 `SMAppService.mainApp`，应用不在 `/Applications` 下时可能失败，设置界面会显示错误。
 - 图片默认上限 8MB（超限会降采样），条目默认上限 300 条，固定条目永不淘汰。
+- 桌面小组件靠 `temporary-exception.files.home-relative-path.read-only` 读主 App 的快照目录。
+  这是免签（ad-hoc）构建下唯一可行的共享通道；App Group 在免签下会被忽略。
+  若要上架 Mac App Store / 公证分发，应改用 App Group 并配上正式签名。
+  快照里会包含最近 12 条历史的标题文字，请注意这一隐私面（目前无法关闭）。

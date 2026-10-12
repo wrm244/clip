@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
-    // MARK: URL Scheme（clip://show / clip://toggle / clip://settings）
+    // MARK: URL Scheme（clip://show / clip://copy/<id> / clip://menu / clip://settings）
 
     @objc
     private func handleURLEvent(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
@@ -53,6 +53,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch url.host() {
         case "show":
             AppCoordinator.shared.showPanel()
+        case "copy":
+            // 桌面小组件点某一条：clip://copy/<uuid>
+            if let raw = url.pathComponents.dropFirst().first, let id = UUID(uuidString: raw) {
+                AppCoordinator.shared.copyFromWidget(id: id)
+            } else {
+                AppCoordinator.shared.showPanel()
+            }
         case "menu":
             AppCoordinator.shared.menuBar.toggle()
         case "preview":

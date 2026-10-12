@@ -162,6 +162,7 @@ enum LocalizationEnglish {
         "关闭": "Close",
         "纯文本": "Plain text",
         "预览": "Preview",
+        "快速查看": "Quick Look",
         "切换预览面板 ⌘Y": "Toggle preview pane ⌘Y",
 
         // MARK: 条目右键菜单 / 预览

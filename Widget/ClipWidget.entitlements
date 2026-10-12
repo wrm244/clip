@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	 桌面小组件必须开启 App Sandbox（系统强制），但本工程是免签（ad-hoc）构建，
+	 拿不到有效的 App Group 权限（trustd 会以 invalid application signature 为由忽略它）。
+	 因此改用 temporary-exception 只读主 App 的数据目录，靠主 App 导出的快照共享数据。
+	 该临时例外在免签构建下会被沙盒正常承认。
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+	<array>
+		<string>/Library/Application Support/Clip/</string>
+	</array>
+</dict>
+</plist>
