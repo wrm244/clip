@@ -20,7 +20,7 @@
 | 图片处理 | ImageIO 转码 + 生成缩略图，超限图片自动降采样，原图与缩略图分文件存放 |
 | 去重 | SHA-256 内容指纹，重复内容只更新时间与使用次数 |
 | 隐私 | 默认忽略密码管理器等标记为「机密」的剪贴板内容；也不会记录自己回填的内容 |
-| 菜单栏面板 | `NSStatusItem` + `NSPopover`（真正的系统 popover，自动采用 Liquid Glass）；面板尺寸固定、底部动作永不被挤出 |
+| 菜单栏面板 | `NSStatusItem` + macOS 27 的「展开界面」会话（`NSStatusItemExpandedInterfaceDelegate`），面板本体 `NSGlassEffectView`；面板尺寸固定、底部动作永不被挤出 |
 | 独立设置窗口 | 标准独立 `NSWindow`，**固定 720×640**，侧边栏分栏（通用／外观／快捷键／关于）；菜单栏、面板齿轮、⌘,、`clip://settings` 都能打开，还支持 `clip://settings/appearance` 直接定位到某一栏 |
 | 其它 | 登录时启动、暂停记录、固定置顶、保留天数／条数上限、深浅色、全局快捷键自定义 |
 
@@ -123,7 +123,7 @@ URL Scheme：`clip://show`、`clip://toggle`、`clip://menu`（打开菜单栏�
 
 | 位置 | 问题（实测） | 改法 |
 | --- | --- | --- |
-| 菜单栏面板 | `NSPopover` 不跟随 `NSApp.appearance`：App 设成深色时整块面板仍是浅色（实测背景 235 + 深色文字） | 显示前显式同步一次 `popover.appearance`（这是 `NSPopover` 的已知行为，不是样式选择） |
+| 菜单栏面板 | 面板是不跟随 App 外观的独立窗口 | 每次显示前显式设置一次 `panel.appearance`（`NSPanel` 不会自动继承 `NSApp.appearance`） |
 | 呼出面板 | 玻璃通透程度**由系统决定** | 不设 `tintColor`，交给系统「外观 → 液态玻璃（通透/色调）」统一控制 |
 | 面板文字 | 与系统对比度设置保持一致 | 统一用系统语义色 `.primary/.secondary/.tertiary`，不写死透明度 |
 | 提示条阴影 | 黑色阴影在深色下看不见 | 深色下加深到 0.5 |
@@ -141,27 +141,39 @@ URL Scheme：`clip://show`、`clip://toggle`、`clip://menu`（打开菜单栏�
 - **增强对比度**：分隔线用 `ClipSeparator`，打开后自动加深（HIG：增强对比度下要有更高对比度的方案）。
 - **减弱动态效果**：开合预览、列表滚动都直接跳变，不做动画。
 
-## 菜单栏面板为什么用 NSPopover
+## 菜单栏面板为什么用「展开界面」会话（不是 NSPopover）
 
-一开始用的是 SwiftUI 的 `MenuBarExtra(.window)`，它给的是一个**普通窗口**而不是真正的 popover：
+最早用的是 SwiftUI 的 `MenuBarExtra(.window)`，它给的是一个**普通窗口**：
 一失焦就被收走，里面的按钮和菜单点不动（设置 / 清空 / 退出都点不动就是这么来的）。
 
-现在改成 AppKit 的原生组合：
+后来也用过 `NSStatusItem` + `NSPopover`（系统组件，行为可靠）。
+到了 macOS 27，AppKit 给状态项提供了一套更贴合菜单栏语义的
+**展开界面（expanded interface）会话**，因此整体迁移到它：
 
 ```swift
+// 不设 menu、不设 button 的 target/action——否则系统不会走会话回调
 let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-item.button?.action = #selector(toggleMenuBarPanel(_:))
-
-let popover = NSPopover()
-popover.behavior = .transient          // 点外面自动关，系统行为
-popover.contentViewController = NSHostingController(rootView: MenuBarView()...)
-popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+item.expandedInterfaceDelegate = self
+// 用户点击状态项 → 系统建立会话并回调：
+//   func statusItem(_:didBegin:)                                  → 显示面板
+//   func statusItemDidEndExpandedInterfaceSession(_:animated:)    → 收起面板
+// 我们自己收起（点面板里的动作）时：
+//   item.expandedInterfaceSession?.cancel()
 ```
 
-- `NSPopover` 是系统组件，**自动使用 Liquid Glass**（HIG 里 popover 正是用 `.regular` 玻璃的典型场景）。
-- 行为可靠：`.transient` 点外面关，`performClose` 主动关，面板里的动作先 `MenuBarPanel.dismiss?()` 再执行。
-- 打开面板前先 `rememberFrontmostApp()`，这样从菜单栏直接点某条记录粘贴时，⌘V 会发给正确的 App。
+- 面板显示 / 收起、键盘导航、Esc、点击状态项再次关闭，都交给系统会话（Apple 文档称
+  “allows participation in keyboard navigation and menu tracking behaviors”）。
+  `NSPopover` 这些行为要靠 `.transient` 自己拼，且和状态项是两套状态。
+- 三条硬性约束（来自 `NSStatusItem.h` 与 Apple 文档）：**不能设 `menu`**、
+  **不能再用 target/action 手动 toggle**、**主动收起必须 `cancel()` 会话**。
+- 会话中点击本 App 的其它窗口不会自动结束会话，所以补了一个 local mouse-down 监视器
+  （正是头文件里建议的 `NSEvent.addLocalMonitorForEventsMatchingMask:handler:`），
+  它跳过状态项自身窗口和层级更高的菜单窗口，避免误关。
+- 面板本体是 `NSGlassEffectView`（`.regular` + `effectIsInteractive`）装 `NSHostingView`，
+  外面套 `PanelContainerView` 用 macOS 27 原生圆角 API 裁形——和快速呼出面板同一套观感。
+- 显示前先 `rememberFrontmostApp()`，这样从菜单栏直接点某条记录粘贴时，⌘V 会发给正确的 App。
 - 面板尺寸固定（340×336），底部用 `Spacer` 顶住，条目多少都不会把三个动作挤出窗口。
+- 定位贴着状态项正下方、右对齐；状态项尚未完成布局导致锚点无效时回退到主屏右上角。
 
 ## 设置窗口
 
@@ -227,7 +239,8 @@ Sources/
     ClipPanelView.swift     面板根视图：搜索 + 分类 + 列表 + 预览 + 状态栏
     ClipRowView.swift       单行条目
     PreviewPane.swift       右侧预览（320pt）
-    MenuBarView.swift       菜单栏下拉面板（装进 NSPopover）
+    MenuBarView.swift       菜单栏下拉面板内容（装进展开界面会话的窗口）
+    MenuBarPanelController.swift 状态项 + 展开界面会话（didBegin/didEnd/cancel）、面板窗口定位、点击别处收起
     SettingsView.swift      设置内容：侧边栏 + 分组表单（通用 / 外观 / 快捷键 / 关于）
     SettingsWindow.swift    设置窗口本身：标准 NSWindow，负责开窗、尺寸与位置记忆
     PanelContainerView.swift 面板窗口形状：macOS 27 原生圆角 API + 裁剪

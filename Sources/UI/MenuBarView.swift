@@ -3,8 +3,9 @@ import SwiftUI
 
 /// 菜单栏下拉面板。
 ///
-/// 由 AppDelegate 用 NSStatusItem + NSPopover 呈现（不是 SwiftUI 的 MenuBarExtra）：
-/// NSPopover 是系统组件，按钮和菜单点击可靠，并且自动使用 Liquid Glass。
+/// 由 MenuBarPanelController 呈现在状态项的「展开界面」里
+/// （macOS 27 的 NSStatusItemExpandedInterfaceDelegate 会话，不是 SwiftUI 的 MenuBarExtra，
+/// 也不是 NSPopover）：面板外观用 NSGlassEffectView 铺底，按钮和菜单点击可靠。
 ///
 /// 尺寸固定，底部用 Spacer 顶住：条目多少都不会把底部的三个动作挤出去。
 struct MenuBarView: View {

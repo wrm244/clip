@@ -1,6 +1,5 @@
 import AppKit
 import Carbon
-import SwiftUI
 
 /// AppKit 生命周期与主菜单。应用以菜单栏代理（LSUIElement）方式运行。
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -27,63 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             andEventID: AEEventID(kAEGetURL)
         )
         installMainMenu()
+        // 菜单栏图标与「展开界面」面板（NSStatusItem + NSStatusItemExpandedInterfaceDelegate）
+        // 由 AppCoordinator 持有并在 start() 里安装——它需要协调器来构建面板内容。
         AppCoordinator.shared.start()
-        installStatusItem()
-    }
-
-    // MARK: 菜单栏图标（NSStatusItem + NSPopover）
-
-    private var statusItem: NSStatusItem?
-    private var popover: NSPopover?
-
-    /// 菜单栏图标 + 下拉面板。
-    ///
-    /// 用 AppKit 而不是 SwiftUI 的 MenuBarExtra(.window)：后者给的是普通窗口，
-    /// 一失焦就被收走，里面的按钮和菜单点不动。NSPopover 是系统组件，
-    /// 行为可靠（.transient 点外面自动关），并且会自动使用 Liquid Glass。
-    private func installStatusItem() {
-        let coordinator = AppCoordinator.shared
-
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let button = item.button {
-            let image = NSImage(systemSymbolName: "clipboard", accessibilityDescription: "Clip")
-            image?.isTemplate = true
-            button.image = image
-            button.target = self
-            button.action = #selector(toggleMenuBarPanel(_:))
-            button.toolTip = "Clip 剪贴板历史"
-        }
-        statusItem = item
-
-        let popover = NSPopover()
-        popover.behavior = .transient
-        popover.animates = true
-        popover.contentSize = MenuBarView.size
-        popover.contentViewController = NSHostingController(
-            rootView: MenuBarView()
-                .environment(coordinator)
-                .environment(coordinator.store)
-                .environment(coordinator.settings)
-        )
-        self.popover = popover
-        MenuBarPanel.dismiss = { [weak popover] in popover?.performClose(nil) }
-    }
-
-    @objc
-    private func toggleMenuBarPanel(_ sender: Any?) {
-        guard let popover, let button = statusItem?.button else { return }
-        if popover.isShown {
-            popover.performClose(sender)
-            return
-        }
-        // NSPopover 的窗口不跟随 NSApp.appearance：App 设成深色时它仍然是浅色的
-        // （实测深色外观下面板背景 235、深色文字）。必须在显示前显式同步一次外观。
-        popover.appearance = AppCoordinator.shared.settings.appearance.nsAppearance
-        // 先记住当前最前的「别的 App」：从菜单栏面板粘贴时要把焦点还回去
-        AppCoordinator.shared.rememberFrontmostApp()
-        NSApp.activate()
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKey()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -105,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "show":
             AppCoordinator.shared.showPanel()
         case "menu":
-            toggleMenuBarPanel(nil)
+            AppCoordinator.shared.menuBar.toggle()
         case "preview":
             // 直接切换右侧预览面板，方便用快捷指令 / 脚本驱动
             AppCoordinator.shared.panel.setPreview(!AppCoordinator.shared.store.previewVisible)

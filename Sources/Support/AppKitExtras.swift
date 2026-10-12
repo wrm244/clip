@@ -1,8 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// 菜单栏面板（NSPopover）的关闭入口。
-/// AppDelegate 创建 popover 时赋值；面板里的动作可以先把面板收起来，再执行真正的操作。
+/// 菜单栏下拉面板的关闭入口。
+/// MenuBarPanelController 安装状态项时赋值；面板里的动作可以先把面板收起来，再执行真正的操作。
+/// 实现上会去 `cancel()` 当前展开界面会话，由系统回调后统一收起。
 @MainActor
 enum MenuBarPanel {
     static var dismiss: (() -> Void)?

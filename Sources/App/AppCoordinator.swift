@@ -13,6 +13,7 @@ final class AppCoordinator {
     let monitor: ClipboardMonitor
     let paste: PasteService
     let panel: PanelController
+    let menuBar: MenuBarPanelController
 
     private init() {
         let settings = ClipSettings()
@@ -22,6 +23,7 @@ final class AppCoordinator {
         self.monitor = ClipboardMonitor(store: store, settings: settings)
         self.paste = PasteService()
         self.panel = PanelController()
+        self.menuBar = MenuBarPanelController()
     }
 
     // MARK: 启动
@@ -33,11 +35,14 @@ final class AppCoordinator {
         }
         settings.onAppearanceChange = { [weak self] in
             self?.panel.syncAppearance()
+            self?.menuBar.syncAppearance()
         }
         settings.onRetentionChange = { [weak self] in
             self?.store.applyRetentionNow()
         }
         panel.attach(coordinator: self)
+        menuBar.attach(coordinator: self)
+        menuBar.install()
         HotKeyCenter.shared.onTrigger = { [weak self] in
             self?.togglePanel()
         }

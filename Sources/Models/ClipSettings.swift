@@ -148,7 +148,7 @@ final class ClipSettings {
         }
     }
 
-    /// 外观变化后的回调：浮层窗口（呼出面板 / 菜单栏 popover）需要显式重新同步。
+    /// 外观变化后的回调：浮层窗口（呼出面板 / 菜单栏面板）需要显式重新同步。
     @ObservationIgnored var onAppearanceChange: (() -> Void)?
 
     var panelWidth: Double = 460 {
