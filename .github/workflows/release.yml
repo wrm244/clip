@@ -1,0 +1,132 @@
+name: Release
+
+# 打上版本标签（v1.0.0 / v1.2.3-beta.1 之类）时自动编译、打包 DMG、发布到 GitHub Release。
+# 也支持在 Actions 页面手动触发（用于补发 / 重跑），手动触发时填版本号即可。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（含 v，例如 v1.0.0）"
+        required: true
+        type: string
+
+# 创建 / 更新 Release 需要写权限；默认 token 可能只有只读，这里显式声明。
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # 需要带 Xcode 27 / macOS 27 SDK 的镜像。若官方还没提供 macos-27，
+    # 可在仓库 Settings → Variables 里设 MACOS_RUNNER（如 macos-26）临时切换，
+    # 再用下面的 CLIP_XCODE_VERSION 指定 27.x 工具链。
+    runs-on: ${{ vars.MACOS_RUNNER || 'macos-27' }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 环境信息（排查用）
+        run: |
+          sw_vers
+          xcode-select -p
+          xcodebuild -version
+
+      - name: 选择 Xcode 工具链
+        # 默认用镜像自带的最新 Xcode；可用仓库变量 CLIP_XCODE_VERSION 固定到某个版本。
+        run: |
+          if [ -n "${{ vars.CLIP_XCODE_VERSION }}" ]; then
+            sudo xcode-select -s "/Applications/Xcode_${{ vars.CLIP_XCODE_VERSION }}.app"
+          fi
+          xcodebuild -version
+
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        run: xcodegen generate
+
+      - name: 解析版本号
+        id: version
+        run: |
+          # 手动触发用输入值，标签触发用标签名
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          case "$VERSION" in
+            v*) ;;
+            *) VERSION="v$VERSION" ;;
+          esac
+          NUMBER="${VERSION#v}"
+          # CFBundleShortVersionString 只用纯数字前缀（v1.2.0-beta.1 → 1.2.0）
+          SHORT="$(printf '%s' "$NUMBER" | sed -E 's/^([0-9]+(\.[0-9]+)*).*/\1/')"
+          [ -n "$SHORT" ] || SHORT="1.0.0"
+          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "版本：$VERSION（短版本号 $SHORT）"
+
+      - name: 编译（Release）
+        env:
+          # macOS 27 已不再支持 Intel，只编 arm64（编 x86_64 会有 deprecation 警告且无意义）。
+          # 真有需要可用仓库变量 CLIP_ARCHS 覆盖，例如 "arm64 x86_64"。
+          CLIP_ARCHS: ${{ vars.CLIP_ARCHS || 'arm64' }}
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Clip.xcodeproj \
+            -scheme Clip \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            ONLY_ACTIVE_ARCH=NO \
+            ARCHS="$CLIP_ARCHS" \
+            MARKETING_VERSION="${{ steps.version.outputs.short }}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            CODE_SIGN_IDENTITY="-" \
+            build
+
+      - name: 打包 DMG
+        run: |
+          ./Scripts/make-dmg.sh \
+            "build/Build/Products/Release/Clip.app" \
+            dist \
+            "${{ steps.version.outputs.tag }}"
+          ls -lh dist
+
+      - name: 生成 Release 说明
+        run: |
+          cat > dist/RELEASE_NOTES.md <<'EOF'
+          ## 安装
+
+          下载 `.dmg`，打开后把 **Clip** 拖进「应用程序」即可。
+
+          ## 首次打开
+
+          本构建使用 ad-hoc 签名（未购买开发者证书），系统会提示「无法验证开发者」。
+          解决办法（任选其一）：
+
+          - 在「应用程序」里 **右键 → 打开**，再点「打开」；
+          - 或执行：`xattr -dr com.apple.quarantine /Applications/Clip.app`
+
+          ## 权限
+
+          - **自动粘贴**需要「辅助功能」权限（系统设置 → 隐私与安全性 → 辅助功能）。
+            未授权时仍会正常复制到剪贴板，只是不会自动按下 ⌘V。
+          - 全局快捷键、面板呼出**不需要**任何权限。
+          EOF
+          cat dist/RELEASE_NOTES.md
+
+      - name: 发布到 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.tag }}
+        run: |
+          # Release 已存在（重跑 / 补发）就覆盖上传 DMG，否则新建。
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" dist/*.dmg --clobber
+          else
+            gh release create "$VERSION" dist/*.dmg \
+              --title "$VERSION" \
+              --notes-file dist/RELEASE_NOTES.md
+          fi
