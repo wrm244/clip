@@ -49,7 +49,7 @@ struct MenuBarView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Clip")
                     .font(.system(size: 13, weight: .semibold))
-                Text("\(store.items.count) 条历史 · \(settings.hotkey.displayString) 呼出")
+                Text(L("%ld 条历史 · %@ 呼出", store.items.count, settings.hotkey.displayString))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -59,7 +59,7 @@ struct MenuBarView: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .labelsHidden()
-                .help(settings.isMonitoringEnabled ? "暂停记录剪贴板" : "开始记录剪贴板")
+                .help(settings.isMonitoringEnabled ? L("暂停记录剪贴板") : L("开始记录剪贴板"))
         }
         .frame(height: 34)
     }
@@ -73,7 +73,7 @@ struct MenuBarView: View {
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: "rectangle.on.rectangle.angled")
-                Text("打开剪贴板历史")
+                Text(L("打开剪贴板历史"))
                 Spacer(minLength: 6)
                 Text(settings.hotkey.displayString)
                     .font(.system(size: 11, weight: .medium))
@@ -89,7 +89,7 @@ struct MenuBarView: View {
 
     private var recent: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("最近")
+            Text(L("最近"))
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
@@ -98,7 +98,7 @@ struct MenuBarView: View {
             if store.items.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "tray")
-                    Text("还没有任何记录")
+                    Text(L("还没有任何记录"))
                 }
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
@@ -124,27 +124,27 @@ struct MenuBarView: View {
                 MenuBarPanel.dismiss?()
                 Task { @MainActor in coordinator.openSettings() }
             } label: {
-                BarActionLabel(title: "设置", symbol: "gearshape")
+                BarActionLabel(title: L("设置"), symbol: "gearshape")
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
 
             Menu {
-                Button("清空未固定记录") {
+                Button(L("清空未固定记录")) {
                     coordinator.clearHistory(keepingPinned: true)
                     MenuBarPanel.dismiss?()
                 }
-                Button("清空全部记录", role: .destructive) {
+                Button(L("清空全部记录"), role: .destructive) {
                     coordinator.clearHistory(keepingPinned: false)
                     MenuBarPanel.dismiss?()
                 }
                 Divider()
-                Button("在访达中显示数据目录") {
+                Button(L("在访达中显示数据目录")) {
                     NSWorkspace.shared.activateFileViewerSelecting([ClipStorage.shared.rootURL])
                     MenuBarPanel.dismiss?()
                 }
             } label: {
-                BarActionLabel(title: "清空", symbol: "trash")
+                BarActionLabel(title: L("清空"), symbol: "trash")
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -153,7 +153,7 @@ struct MenuBarView: View {
             Button {
                 NSApp.terminate(nil)
             } label: {
-                BarActionLabel(title: "退出", symbol: "power", isDestructive: true)
+                BarActionLabel(title: L("退出"), symbol: "power", isDestructive: true)
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)

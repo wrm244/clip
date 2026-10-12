@@ -14,8 +14,8 @@ final class ClipSettings {
 
         var title: String {
             switch self {
-            case .compact: "紧凑"
-            case .comfortable: "宽松"
+            case .compact: L("紧凑")
+            case .comfortable: L("宽松")
             }
         }
 
@@ -36,9 +36,9 @@ final class ClipSettings {
 
         var title: String {
             switch self {
-            case .system: "跟随系统"
-            case .light: "浅色"
-            case .dark: "深色"
+            case .system: L("跟随系统")
+            case .light: L("浅色")
+            case .dark: L("深色")
             }
         }
 
@@ -64,6 +64,7 @@ final class ClipSettings {
         static let showSourceApp = "clip.ui.sourceApp"
         static let density = "clip.ui.density"
         static let appearance = "clip.ui.appearance"
+        static let language = "clip.ui.language"
         static let panelWidth = "clip.ui.panelWidth.v2"
         static let panelHeight = "clip.ui.panelHeight.v2"
         static let hotkey = "clip.hotkey"
@@ -151,6 +152,17 @@ final class ClipSettings {
     /// 外观变化后的回调：浮层窗口（呼出面板 / 菜单栏面板）需要显式重新同步。
     @ObservationIgnored var onAppearanceChange: (() -> Void)?
 
+    /// 界面语言。改动立即生效：SwiftUI 视图通过 `Localization` 的观察自动刷新，
+    /// AppKit 侧（主菜单、状态项 tooltip、按语言缓存的列表文案）由回调显式重建。
+    var language: AppLanguage = .system {
+        didSet {
+            defaults.set(language.rawValue, forKey: Key.language)
+            if language != oldValue { onLanguageChange?() }
+        }
+    }
+
+    @ObservationIgnored var onLanguageChange: (() -> Void)?
+
     var panelWidth: Double = 460 {
         didSet { defaults.set(panelWidth, forKey: Key.panelWidth) }
     }
@@ -188,6 +200,7 @@ final class ClipSettings {
         showSourceApp = defaults.object(forKey: Key.showSourceApp) as? Bool ?? true
         popupAtMouse = defaults.object(forKey: Key.popupAtMouse) as? Bool ?? true
         appearance = Appearance(rawValue: defaults.string(forKey: Key.appearance) ?? "") ?? .system
+        language = AppLanguage(rawValue: defaults.string(forKey: Key.language) ?? "") ?? .system
         panelWidth = defaults.object(forKey: Key.panelWidth) as? Double ?? 460
         panelHeight = defaults.object(forKey: Key.panelHeight) as? Double ?? 520
         if let data = defaults.data(forKey: Key.hotkey),

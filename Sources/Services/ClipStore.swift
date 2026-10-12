@@ -117,7 +117,7 @@ final class ClipStore {
         case .image:
             guard let raw = draft.imageData, let imageBlob = draft.imageBlob, let thumbBlob = draft.thumbBlob else { return }
             guard let transcoded = await ImageTranscoder.shared.transcode(raw, maxBytes: settings.maxItemBytes) else {
-                showToast("图片过大或无法解析，已忽略", symbol: "exclamationmark.triangle.fill")
+                showToast(L("图片过大或无法解析，已忽略"), symbol: "exclamationmark.triangle.fill")
                 return
             }
             item.imageBlob = imageBlob
@@ -194,7 +194,7 @@ final class ClipStore {
         sortItems()
         rebuildVisible()
         enqueueUpdate(updated)
-        showToast(updated.isPinned ? "已固定" : "已取消固定", symbol: "pin.fill")
+        showToast(updated.isPinned ? L("已固定") : L("已取消固定"), symbol: "pin.fill")
     }
 
     func remove(_ id: ClipItem.ID) {
@@ -218,7 +218,7 @@ final class ClipStore {
         prune()
         rebuildVisible()
         if items.count < before {
-            showToast("已按保留策略清理 \(before - items.count) 条", symbol: "trash.fill")
+            showToast(L("已按保留策略清理 %ld 条", before - items.count), symbol: "trash.fill")
         }
     }
 
@@ -236,7 +236,7 @@ final class ClipStore {
             await storage.delete(ids: ids)
             await storage.removeBlobs(blobs)
         }
-        showToast(keepingPinned ? "已清空未固定记录" : "已清空全部记录", symbol: "trash.fill")
+        showToast(keepingPinned ? L("已清空未固定记录") : L("已清空全部记录"), symbol: "trash.fill")
     }
 
     func eraseEverything() async {
@@ -295,6 +295,17 @@ final class ClipStore {
 
     func count(for filter: ClipFilter) -> Int {
         filterCounts[filter] ?? 0
+    }
+
+    // MARK: - 本地化
+
+    /// 界面语言变化后调用。
+    /// 搜索索引（内含类别标题）与行副标题都按旧语言生成过，必须清掉重建，
+    /// 否则英文界面下会搜不到、或列表里夹杂旧语言文案。
+    func localizationDidChange() {
+        searchIndex = [:]
+        detailCache = [:]
+        rebuildVisible()
     }
 
     // MARK: - 提示

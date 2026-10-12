@@ -22,6 +22,7 @@
 | 隐私 | 默认忽略密码管理器等标记为「机密」的剪贴板内容；也不会记录自己回填的内容 |
 | 菜单栏面板 | `NSStatusItem` + macOS 27 的「展开界面」会话（`NSStatusItemExpandedInterfaceDelegate`），面板本体 `NSGlassEffectView`；面板尺寸固定、底部动作永不被挤出 |
 | 独立设置窗口 | 标准独立 `NSWindow`，**固定 720×640**，侧边栏分栏（通用／外观／快捷键／关于）；菜单栏、面板齿轮、⌘,、`clip://settings` 都能打开，还支持 `clip://settings/appearance` 直接定位到某一栏 |
+| 多语言 | 中文（简体）/ English，设置里可切；**切换立即生效**，无需重启；「跟随系统」按 macOS 首选语言自动选择 |
 | 其它 | 登录时启动、暂停记录、固定置顶、保留天数／条数上限、深浅色、全局快捷键自定义 |
 
 ## 界面设计
@@ -46,6 +47,31 @@
 - **紧凑**：搜索框 32pt、分类 24pt、行高 40（紧凑）/ 52（宽松）、状态栏 34pt；
   面板高度 = 头部 + 列表 + 状态栏；高度固定为设定值，条目多少都只影响列表内部滚动（避免呼出时窗口上下跳）。
 - 窗口尺寸和 SwiftUI 布局共用 `PanelMetrics`，两边不会算出不同的高度。
+
+## 多语言（中 / 英）
+
+界面语言在「设置 → 通用 → 语言」里切换，默认「跟随系统」：`zh*` 走简体中文，其余回退英文。
+切换是**立即生效**的，和这套设置里其它开关一致，不需要重启。
+
+实现上没有用 `.lproj` 或 String Catalog，而是一张纯 Swift 的文案表（`Sources/Support/Localization*.swift`）：
+
+- **以中文源文本作为 key**（Apple 的 source-language-as-key 惯例）。中文本身是源语言，
+  查不到就直接用 key，所以**不需要再维护一份中文表**；英文表里只列需要翻译的串。
+- 需要插入变量的串用 printf 风格格式串作 key（`"%ld 项"`、`"版本 %@（%@）"`），
+  用 `String(format:)` 填充，避免中英语序差异。
+- 日期/时间用 Foundation 的 `RelativeDateTimeFormatter`（跟随当前语言自动处理单复数与语序，
+  例如 `1m ago` / `1分钟前`）；字节数用 `ByteCountFormatter`。
+- `Localization` 是 `@Observable` 的单例，`L("…")` 在 SwiftUI `body` 里会读到它，
+  于是切换语言时所有用到文案的视图自动重建，**不用重建任何 hosting 视图**。
+- AppKit 侧（主菜单、状态项 tooltip、设置窗口标题）以及按语言缓存的列表搜索索引 / 副标题，
+  由 `ClipSettings.onLanguageChange` → `AppCoordinator.applyLanguage()` 显式刷新。
+
+为什么这么选：这套界面几乎全部是代码里拼出来的（模型计算属性、AppKit 菜单、toast），
+且设置改动要求立即生效。走 bundle 本地化要在运行期切换 SwiftUI 的 `Bundle`，
+要么重建全部 hosting 视图，要么等系统重启，代价和不确定性都更高；一张 Swift 表则简单、可控、零依赖。
+
+添加新文案：在代码里用 `L("中文源文本")`（或带参数 `L("%ld 项", n)`），
+再到 `LocalizationEnglish.swift` 补一条英文即可；漏翻译会回退成中文，不会显示成 key。
 
 ## 构建
 
@@ -247,6 +273,8 @@ Sources/
     Components.swift        分类药丸、键帽、提示条、空状态
   Support/
     Log.swift               统一 os.Logger
+    Localization.swift      运行时本地化：AppLanguage / Localization 单例 / L(_:)
+    LocalizationEnglish.swift 英文文案表（key 为中文源文本）
     AppKitExtras.swift      颜色工具
   Resources/Assets.xcassets AppIcon
 ```

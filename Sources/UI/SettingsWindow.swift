@@ -80,4 +80,9 @@ final class SettingsWindowController {
     private func apply(pane: SettingsPane, to window: NSWindow) {
         window.title = pane.title
     }
+
+    /// 界面语言变化：SwiftUI 内容会自动刷新，这里补上窗口标题。
+    func refreshLocalization() {
+        window?.title = model.pane.title
+    }
 }

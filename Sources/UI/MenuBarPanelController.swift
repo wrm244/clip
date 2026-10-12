@@ -56,7 +56,7 @@ final class MenuBarPanelController: NSObject, @MainActor NSStatusItemExpandedInt
             let image = NSImage(systemSymbolName: "clipboard", accessibilityDescription: "Clip")
             image?.isTemplate = true
             button.image = image
-            button.toolTip = "Clip 剪贴板历史"
+            button.toolTip = L("Clip 剪贴板历史")
         }
         item.expandedInterfaceDelegate = self
         statusItem = item
@@ -98,6 +98,12 @@ final class MenuBarPanelController: NSObject, @MainActor NSStatusItemExpandedInt
 
     func syncAppearance() {
         panel?.appearance = coordinator?.settings.appearance.nsAppearance
+    }
+
+    /// 界面语言变化时刷新 AppKit 侧文案（状态项 tooltip）。
+    /// 面板内容是 SwiftUI，靠对 Localization 的观察自动刷新。
+    func refreshLocalization() {
+        statusItem?.button?.toolTip = L("Clip 剪贴板历史")
     }
 
     // MARK: - 显示 / 收起

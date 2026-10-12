@@ -12,10 +12,10 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .general: "通用"
-        case .appearance: "外观"
-        case .shortcut: "快捷键"
-        case .about: "关于"
+        case .general: L("通用")
+        case .appearance: L("外观")
+        case .shortcut: L("快捷键")
+        case .about: L("关于")
         }
     }
 
@@ -31,10 +31,10 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     /// 分栏标题下的一句说明。
     var subtitle: String {
         switch self {
-        case .general: "记录、保留、粘贴与系统集成"
-        case .appearance: "主题、列表与面板"
-        case .shortcut: "全局呼出快捷键与面板内操作"
-        case .about: "版本、存储与数据"
+        case .general: L("记录、保留、粘贴与系统集成")
+        case .appearance: L("主题、列表与面板")
+        case .shortcut: L("全局呼出快捷键与面板内操作")
+        case .about: L("版本、存储与数据")
         }
     }
 }
@@ -118,58 +118,70 @@ struct GeneralSettings: View {
     var body: some View {
         Form {
             Section {
-                Toggle("记录剪贴板内容", isOn: Bindable(settings).isMonitoringEnabled)
-                Toggle("忽略密码管理器等敏感内容", isOn: Bindable(settings).ignoreConcealed)
+                Picker(L("界面语言"), selection: Bindable(settings).language) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.title).tag(language)
+                    }
+                }
             } header: {
-                Text("采集")
+                Text(L("语言"))
             } footer: {
-                Text("暂停记录不会影响已经保存的历史。被标记为机密的剪贴板内容始终不会被记录。")
+                Text(L("「跟随系统」按 macOS 的首选语言自动选择；切换后立即生效，无需重启。"))
             }
 
             Section {
-                Picker("最多保留", selection: Bindable(settings).maxItems) {
-                    Text("100 条").tag(100)
-                    Text("300 条").tag(300)
-                    Text("500 条").tag(500)
-                    Text("1000 条").tag(1000)
+                Toggle(L("记录剪贴板内容"), isOn: Bindable(settings).isMonitoringEnabled)
+                Toggle(L("忽略密码管理器等敏感内容"), isOn: Bindable(settings).ignoreConcealed)
+            } header: {
+                Text(L("采集"))
+            } footer: {
+                Text(L("暂停记录不会影响已经保存的历史。被标记为机密的剪贴板内容始终不会被记录。"))
+            }
+
+            Section {
+                Picker(L("最多保留"), selection: Bindable(settings).maxItems) {
+                    Text(L("100 条")).tag(100)
+                    Text(L("300 条")).tag(300)
+                    Text(L("500 条")).tag(500)
+                    Text(L("1000 条")).tag(1000)
                 }
-                Picker("保留时长", selection: Bindable(settings).retentionDays) {
-                    Text("永久").tag(0)
-                    Text("1 天").tag(1)
-                    Text("7 天").tag(7)
-                    Text("30 天").tag(30)
+                Picker(L("保留时长"), selection: Bindable(settings).retentionDays) {
+                    Text(L("永久")).tag(0)
+                    Text(L("1 天")).tag(1)
+                    Text(L("7 天")).tag(7)
+                    Text(L("30 天")).tag(30)
                 }
-                LabeledContent("当前占用") {
-                    Text("\(coordinator.store.items.count) 条 · \(ClipItem.byteText(usage))")
+                LabeledContent(L("当前占用")) {
+                    Text(L("%ld 条 · %@", coordinator.store.items.count, ClipItem.byteText(usage)))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
             } header: {
-                Text("历史")
+                Text(L("历史"))
             } footer: {
-                Text("固定（置顶）的条目永远不会被自动清理；保留时长按条目最后一次使用的时间计算。")
+                Text(L("固定（置顶）的条目永远不会被自动清理；保留时长按条目最后一次使用的时间计算。"))
             }
 
             Section {
-                Toggle("选中后自动粘贴到前台应用", isOn: Bindable(settings).autoPaste)
-                Toggle("复制时播放提示音", isOn: Bindable(settings).playSound)
-                LabeledContent("辅助功能权限") { permissionStatus }
+                Toggle(L("选中后自动粘贴到前台应用"), isOn: Bindable(settings).autoPaste)
+                Toggle(L("复制时播放提示音"), isOn: Bindable(settings).playSound)
+                LabeledContent(L("辅助功能权限")) { permissionStatus }
             } header: {
-                Text("粘贴")
+                Text(L("粘贴"))
             } footer: {
                 Text(paste.isTrusted
-                     ? "已获得辅助功能权限，选中条目后 Clip 会自动按下 ⌘V。"
-                     : "未授权时 Clip 只会把内容复制到剪贴板，不会自动粘贴。授权后无需重启即可生效。")
+                     ? L("已获得辅助功能权限，选中条目后 Clip 会自动按下 ⌘V。")
+                     : L("未授权时 Clip 只会把内容复制到剪贴板，不会自动粘贴。授权后无需重启即可生效。"))
             }
 
-            Section("系统") {
-                Toggle("登录时启动 Clip", isOn: launchAtLogin)
+            Section(L("系统")) {
+                Toggle(L("登录时启动 Clip"), isOn: launchAtLogin)
                 if let launchError {
                     Label(launchError, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
                 }
-                LabeledContent("数据目录") {
-                    Button("在访达中显示") {
+                LabeledContent(L("数据目录")) {
+                    Button(L("在访达中显示")) {
                         NSWorkspace.shared.activateFileViewerSelecting([ClipStorage.shared.rootURL])
                     }
                 }
@@ -186,13 +198,13 @@ struct GeneralSettings: View {
     private var permissionStatus: some View {
         HStack(spacing: 10) {
             Label(
-                paste.isTrusted ? "已授权" : "未授权",
+                paste.isTrusted ? L("已授权") : L("未授权"),
                 systemImage: paste.isTrusted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
             )
             .foregroundStyle(paste.isTrusted ? Color.green : Color.orange)
             if !paste.isTrusted {
                 // 整个设置里最重要的一个动作，按 HIG「只给最关键的功能元素用玻璃」
-                Button("去授权…") { paste.requestAccess() }
+                Button(L("去授权…")) { paste.requestAccess() }
                     .buttonStyle(.glass)
             }
         }
@@ -213,14 +225,14 @@ struct AppearanceSettings: View {
 
     var body: some View {
         Form {
-            Section("主题") {
-                Picker("外观", selection: Bindable(settings).appearance) {
+            Section(L("主题")) {
+                Picker(L("外观"), selection: Bindable(settings).appearance) {
                     ForEach(ClipSettings.Appearance.allCases) { item in
                         Text(item.title).tag(item)
                     }
                 }
                 .pickerStyle(.segmented)
-                Picker("列表密度", selection: Bindable(settings).density) {
+                Picker(L("列表密度"), selection: Bindable(settings).density) {
                     ForEach(ClipSettings.Density.allCases) { item in
                         Text(item.title).tag(item)
                     }
@@ -229,26 +241,26 @@ struct AppearanceSettings: View {
             }
 
             Section {
-                Toggle("显示来源应用", isOn: Bindable(settings).showSourceApp)
-                Toggle("展开预览面板", isOn: Bindable(settings).showPreview)
+                Toggle(L("显示来源应用"), isOn: Bindable(settings).showSourceApp)
+                Toggle(L("展开预览面板"), isOn: Bindable(settings).showPreview)
             } header: {
-                Text("列表")
+                Text(L("列表"))
             } footer: {
-                Text("预览面板会在打开时默认展开，也可以随时用 → 或 ⌘Y 展开，← 收起。")
+                Text(L("预览面板会在打开时默认展开，也可以随时用 → 或 ⌘Y 展开，← 收起。"))
             }
 
             Section {
-                Toggle("在鼠标位置弹出", isOn: Bindable(settings).popupAtMouse)
-                LabeledContent("面板宽度") {
+                Toggle(L("在鼠标位置弹出"), isOn: Bindable(settings).popupAtMouse)
+                LabeledContent(L("面板宽度")) {
                     measurement(Bindable(settings).panelWidth, range: 360...900, unit: "pt")
                 }
-                LabeledContent("面板高度") {
+                LabeledContent(L("面板高度")) {
                     measurement(Bindable(settings).panelHeight, range: 320...900, unit: "pt")
                 }
             } header: {
-                Text("面板")
+                Text(L("面板"))
             } footer: {
-                Text("关闭「在鼠标位置弹出」后，面板固定在屏幕上方居中显示。面板高度是固定值，条目超出时在列表内滚动；展开预览时只向右加宽。")
+                Text(L("关闭「在鼠标位置弹出」后，面板固定在屏幕上方居中显示。面板高度是固定值，条目超出时在列表内滚动；展开预览时只向右加宽。"))
             }
         }
         .formStyle(.grouped)
@@ -280,18 +292,18 @@ struct ShortcutSettings: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("全局快捷键") {
+                LabeledContent(L("全局快捷键")) {
                     HStack(spacing: 8) {
                         recorderButton
                         Button {
                             settings.hotkey = .panelDefault
-                            message = "已恢复为默认快捷键"
+                            message = L("已恢复为默认快捷键")
                         } label: {
                             Image(systemName: "arrow.counterclockwise")
                         }
                         .buttonStyle(.borderless)
                         .disabled(settings.hotkey == .panelDefault)
-                        .help("恢复默认快捷键")
+                        .help(L("恢复默认快捷键"))
                     }
                 }
                 if let message {
@@ -300,22 +312,22 @@ struct ShortcutSettings: View {
                         .foregroundStyle(.secondary)
                 }
             } header: {
-                Text("呼出面板")
+                Text(L("呼出面板"))
             } footer: {
                 Text(isRecording
-                     ? "直接按下想要的组合键，需要包含 ⌘、⌥ 或 ⌃；按 esc 取消。录制期间全局快捷键会暂时停用。"
-                     : "在其他应用里按下这个组合键即可呼出面板。点击按键可以重新录制。")
+                     ? L("直接按下想要的组合键，需要包含 ⌘、⌥ 或 ⌃；按 esc 取消。录制期间全局快捷键会暂时停用。")
+                     : L("在其他应用里按下这个组合键即可呼出面板。点击按键可以重新录制。"))
             }
 
-            Section("面板内快捷键") {
-                shortcutRow("↑  ↓", "上下选择")
-                shortcutRow("↩", "粘贴选中项")
-                shortcutRow("⌥ ↩", "以纯文本粘贴")
-                shortcutRow("⌘ 1 … ⌘ 9", "直接粘贴第 N 条")
-                shortcutRow("⌘ P", "固定 / 取消固定")
-                shortcutRow("⌘ ⌫", "删除选中项")
-                shortcutRow("→  ←", "展开 / 收起预览")
-                shortcutRow("esc", "关闭面板")
+            Section(L("面板内快捷键")) {
+                shortcutRow("↑  ↓", L("上下选择"))
+                shortcutRow("↩", L("粘贴选中项"))
+                shortcutRow("⌥ ↩", L("以纯文本粘贴"))
+                shortcutRow("⌘ 1 … ⌘ 9", L("直接粘贴第 N 条"))
+                shortcutRow("⌘ P", L("固定 / 取消固定"))
+                shortcutRow("⌘ ⌫", L("删除选中项"))
+                shortcutRow("→  ←", L("展开 / 收起预览"))
+                shortcutRow("esc", L("关闭面板"))
             }
         }
         .formStyle(.grouped)
@@ -327,7 +339,7 @@ struct ShortcutSettings: View {
         Button {
             isRecording ? stopRecording() : startRecording()
         } label: {
-            Text(isRecording ? "按下组合键…" : settings.hotkey.displayString)
+            Text(isRecording ? L("按下组合键…") : settings.hotkey.displayString)
                 .font(.system(size: 13, weight: .semibold))
                 .frame(minWidth: 108)
                 .padding(.vertical, 3)
@@ -359,17 +371,17 @@ struct ShortcutSettings: View {
         HotKeyCenter.shared.unregister()
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
             if event.keyCode == 53 {
-                message = "已取消"
+                message = L("已取消")
                 stopRecording()
                 return nil
             }
             if let shortcut = Shortcut(event: event), shortcut.isValid {
                 settings.hotkey = shortcut
-                message = "已更新为 \(shortcut.displayString)"
+                message = L("已更新为 %@", shortcut.displayString)
                 stopRecording()
                 return nil
             }
-            message = "这个按键不能作为全局快捷键，请加上 ⌘、⌥ 或 ⌃"
+            message = L("这个按键不能作为全局快捷键，请加上 ⌘、⌥ 或 ⌃")
             return nil
         }
     }
@@ -403,10 +415,10 @@ struct AboutSettings: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Clip")
                             .font(.system(size: 15, weight: .semibold))
-                        Text("版本 \(Bundle.main.clipVersion)（\(Bundle.main.clipBuild)）")
+                        Text(L("版本 %@（%@）", Bundle.main.clipVersion, Bundle.main.clipBuild))
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
-                        Text("原生、轻量的 macOS 剪贴板历史管理器")
+                        Text(L("原生、轻量的 macOS 剪贴板历史管理器"))
                             .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
                     }
@@ -419,48 +431,48 @@ struct AboutSettings: View {
                 .listRowInsets(EdgeInsets(top: 6, leading: 6, bottom: 6, trailing: 6))
             }
 
-            Section("存储") {
-                LabeledContent("记录条数") {
+            Section(L("存储")) {
+                LabeledContent(L("记录条数")) {
                     Text("\(coordinator.store.items.count)")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
-                LabeledContent("磁盘占用") {
+                LabeledContent(L("磁盘占用")) {
                     Text(ClipItem.byteText(usage))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
-                LabeledContent("数据目录") {
-                    Button("打开") {
+                LabeledContent(L("数据目录")) {
+                    Button(L("打开")) {
                         NSWorkspace.shared.activateFileViewerSelecting([ClipStorage.shared.rootURL])
                     }
                 }
             }
 
             Section {
-                Button("清空全部数据…", role: .destructive) {
+                Button(L("清空全部数据…"), role: .destructive) {
                     isConfirmingErase = true
                 }
             } footer: {
-                Text("会删除全部历史记录与图片文件，此操作无法撤销。固定的条目也会一并删除。")
+                Text(L("会删除全部历史记录与图片文件，此操作无法撤销。固定的条目也会一并删除。"))
             }
         }
         .formStyle(.grouped)
         .task { usage = await coordinator.store.diskUsage() }
-        .confirmationDialog("确定要清空全部数据吗？", isPresented: $isConfirmingErase, titleVisibility: .visible) {
-            Button("清空全部数据", role: .destructive) {
+        .confirmationDialog(L("确定要清空全部数据吗？"), isPresented: $isConfirmingErase, titleVisibility: .visible) {
+            Button(L("清空全部数据"), role: .destructive) {
                 Task {
                     await coordinator.store.eraseEverything()
                     // 缩略图/预览图缓存的键是 blob 文件名，清空后必须一起清，
                     // 否则已删除的图片还会从缓存里显示出来
                     ImageCache.shared.clear()
-                    coordinator.store.showToast("已清空全部数据", symbol: "trash.fill")
+                    coordinator.store.showToast(L("已清空全部数据"), symbol: "trash.fill")
                     usage = await coordinator.store.diskUsage()
                 }
             }
-            Button("取消", role: .cancel) {}
+            Button(L("取消"), role: .cancel) {}
         } message: {
-            Text("全部历史记录与图片文件都会被删除，且无法恢复。")
+            Text(L("全部历史记录与图片文件都会被删除，且无法恢复。"))
         }
     }
 }

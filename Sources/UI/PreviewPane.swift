@@ -19,7 +19,7 @@ struct PreviewPane: View {
                 separator
                 actions(for: item)
             } else {
-                EmptyHint(title: "未选择条目", message: "在左侧选择一条记录即可查看详情", symbol: "square.dashed")
+                EmptyHint(title: L("未选择条目"), message: L("在左侧选择一条记录即可查看详情"), symbol: "square.dashed")
             }
         }
         .frame(width: 320)
@@ -80,8 +80,8 @@ struct PreviewPane: View {
                             .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
                     )
             }
-            metaRow("尺寸", "\(item.pixelWidth ?? 0) × \(item.pixelHeight ?? 0)")
-            metaRow("体积", ClipItem.byteText(item.byteCount))
+            metaRow(L("尺寸"), "\(item.pixelWidth ?? 0) × \(item.pixelHeight ?? 0)")
+            metaRow(L("体积"), ClipItem.byteText(item.byteCount))
         }
     }
 
@@ -141,7 +141,7 @@ struct PreviewPane: View {
                 Button {
                     NSWorkspace.shared.open(url)
                 } label: {
-                    Label("在浏览器中打开", systemImage: "arrow.up.right.square")
+                    Label(L("在浏览器中打开"), systemImage: "arrow.up.right.square")
                         .font(.system(size: 11))
                 }
                 .buttonStyle(.link)
@@ -170,7 +170,7 @@ struct PreviewPane: View {
                 Button {
                     coordinator.paste(item)
                 } label: {
-                    Label("粘贴", systemImage: "arrow.down.doc")
+                    Label(L("粘贴"), systemImage: "arrow.down.doc")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.glassProminent)
@@ -179,7 +179,7 @@ struct PreviewPane: View {
                 Button {
                     coordinator.copy(item)
                 } label: {
-                    Label("复制", systemImage: "doc.on.doc")
+                    Label(L("复制"), systemImage: "doc.on.doc")
                 }
                 .buttonStyle(.glass)
                 .controlSize(.regular)
@@ -188,7 +188,7 @@ struct PreviewPane: View {
                 Button {
                     coordinator.store.togglePin(item.id)
                 } label: {
-                    Label(item.isPinned ? "取消固定" : "固定", systemImage: item.isPinned ? "pin.slash" : "pin")
+                    Label(item.isPinned ? L("取消固定") : L("固定"), systemImage: item.isPinned ? "pin.slash" : "pin")
                         .font(.system(size: 11))
                 }
                 .buttonStyle(.plain)

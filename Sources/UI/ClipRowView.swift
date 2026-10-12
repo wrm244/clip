@@ -116,7 +116,7 @@ struct ClipRowView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help(item.isPinned ? "取消固定" : "固定")
+                .help(item.isPinned ? L("取消固定") : L("固定"))
 
                 Button {
                     coordinator.store.remove(item.id)
@@ -126,7 +126,7 @@ struct ClipRowView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("删除")
+                .help(L("删除"))
             }
         }
     }
@@ -151,34 +151,34 @@ struct ClipRowView: View {
 
     @ViewBuilder
     private var menu: some View {
-        Button("粘贴") { coordinator.paste(item) }
-        Button("粘贴为纯文本") { coordinator.paste(item, plainText: true) }
-        Button("仅复制") { coordinator.copy(item) }
+        Button(L("粘贴")) { coordinator.paste(item) }
+        Button(L("粘贴为纯文本")) { coordinator.paste(item, plainText: true) }
+        Button(L("仅复制")) { coordinator.copy(item) }
         Divider()
-        Button(item.isPinned ? "取消固定" : "固定") { coordinator.store.togglePin(item.id) }
+        Button(item.isPinned ? L("取消固定") : L("固定")) { coordinator.store.togglePin(item.id) }
         switch item.kind {
         case .link:
             if let url = URL(string: item.text ?? "") {
-                Button("打开链接") { NSWorkspace.shared.open(url) }
+                Button(L("打开链接")) { NSWorkspace.shared.open(url) }
             }
         case .file:
             if let path = item.filePaths?.first {
-                Button("在访达中显示") {
+                Button(L("在访达中显示")) {
                     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
                 }
-                Button("复制路径") { coordinator.copyString(item.text ?? "") }
+                Button(L("复制路径")) { coordinator.copyString(item.text ?? "") }
             }
         case .color:
             if let color = ColorValue.parse(item.text ?? "") {
-                Button("复制 Hex") { coordinator.copyString(color.clipHexString) }
-                Button("复制 SwiftUI Color") { coordinator.copyString(color.clipSwiftUIColorCode) }
+                Button(L("复制 Hex")) { coordinator.copyString(color.clipHexString) }
+                Button(L("复制 SwiftUI Color")) { coordinator.copyString(color.clipSwiftUIColorCode) }
             }
         case .image:
-            Button("复制图片") { coordinator.copy(item) }
+            Button(L("复制图片")) { coordinator.copy(item) }
         case .text:
             EmptyView()
         }
         Divider()
-        Button("删除", role: .destructive) { coordinator.store.remove(item.id) }
+        Button(L("删除"), role: .destructive) { coordinator.store.remove(item.id) }
     }
 }

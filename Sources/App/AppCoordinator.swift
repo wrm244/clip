@@ -29,6 +29,9 @@ final class AppCoordinator {
     // MARK: 启动
 
     func start() {
+        // 先把语言落到运行时的 Localization，再建 UI / 装热键，
+        // 否则菜单栏 tooltip、菜单等会先用默认语言渲染一次。
+        Localization.shared.apply(settings.language)
         settings.applyAppearance()
         settings.onHotKeyChange = { [weak self] in
             self?.applyHotKey()
@@ -36,6 +39,9 @@ final class AppCoordinator {
         settings.onAppearanceChange = { [weak self] in
             self?.panel.syncAppearance()
             self?.menuBar.syncAppearance()
+        }
+        settings.onLanguageChange = { [weak self] in
+            self?.applyLanguage()
         }
         settings.onRetentionChange = { [weak self] in
             self?.store.applyRetentionNow()
@@ -60,7 +66,19 @@ final class AppCoordinator {
     func applyHotKey() {
         let registered = HotKeyCenter.shared.register(settings.hotkey)
         guard !registered else { return }
-        store.showToast("快捷键 \(settings.hotkey.displayString) 注册失败", symbol: "exclamationmark.triangle.fill")
+        store.showToast(L("快捷键 %@ 注册失败", settings.hotkey.displayString), symbol: "exclamationmark.triangle.fill")
+    }
+
+    /// 界面语言变化。
+    ///
+    /// SwiftUI 视图通过观察 `Localization.shared.resolved` 自动刷新，无需重建 hosting 视图；
+    /// 这里只处理 AppKit 侧与缓存：主菜单、状态项 tooltip、设置窗口标题、列表文案缓存。
+    private func applyLanguage() {
+        Localization.shared.apply(settings.language)
+        MainMenu.install(target: AppDelegate.shared)
+        menuBar.refreshLocalization()
+        SettingsWindowController.shared.refreshLocalization()
+        store.localizationDidChange()
     }
 
     // MARK: 面板
@@ -94,7 +112,7 @@ final class AppCoordinator {
     func paste(_ item: ClipItem, plainText: Bool = false) {
         Task {
             guard await PasteboardWriter.write(item, plainText: plainText) else {
-                store.showToast("内容已不存在，无法粘贴", symbol: "exclamationmark.triangle.fill")
+                store.showToast(L("内容已不存在，无法粘贴"), symbol: "exclamationmark.triangle.fill")
                 return
             }
             if settings.playSound {
@@ -119,17 +137,17 @@ final class AppCoordinator {
     func copy(_ item: ClipItem, plainText: Bool = false) {
         Task {
             guard await PasteboardWriter.write(item, plainText: plainText) else {
-                store.showToast("内容已不存在，无法复制", symbol: "exclamationmark.triangle.fill")
+                store.showToast(L("内容已不存在，无法复制"), symbol: "exclamationmark.triangle.fill")
                 return
             }
             store.markUsed(item.id)
-            store.showToast(plainText ? "已复制为纯文本" : "已复制", symbol: "doc.on.doc.fill")
+            store.showToast(plainText ? L("已复制为纯文本") : L("已复制"), symbol: "doc.on.doc.fill")
         }
     }
 
     func copyString(_ text: String) {
         PasteboardWriter.writeString(text)
-        store.showToast("已复制", symbol: "doc.on.doc.fill")
+        store.showToast(L("已复制"), symbol: "doc.on.doc.fill")
     }
 
     private func finishPaste() {
@@ -142,7 +160,7 @@ final class AppCoordinator {
             // 面板先不关：提示条是画在面板里的，关掉面板就什么都看不到了，
             // 用户只会觉得“按了回车没反应”。
             store.showToast(
-                "已复制。自动粘贴需要辅助功能权限：系统设置 → 隐私与安全性 → 辅助功能",
+                L("已复制。自动粘贴需要辅助功能权限：系统设置 → 隐私与安全性 → 辅助功能"),
                 symbol: "exclamationmark.triangle.fill",
                 seconds: 6
             )

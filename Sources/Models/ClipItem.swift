@@ -12,11 +12,11 @@ enum ClipKind: String, Codable, CaseIterable, Hashable, Sendable {
 
     var title: String {
         switch self {
-        case .text: "文本"
-        case .link: "链接"
-        case .color: "颜色"
-        case .image: "图片"
-        case .file: "文件"
+        case .text: L("文本")
+        case .link: L("链接")
+        case .color: L("颜色")
+        case .image: L("图片")
+        case .file: L("文件")
         }
     }
 
@@ -47,13 +47,13 @@ enum ClipFilter: String, CaseIterable, Hashable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .all: "全部"
-        case .text: "文本"
-        case .image: "图片"
-        case .file: "文件"
-        case .link: "链接"
-        case .color: "颜色"
-        case .pinned: "已固定"
+        case .all: L("全部")
+        case .text: L("文本")
+        case .image: L("图片")
+        case .file: L("文件")
+        case .link: L("链接")
+        case .color: L("颜色")
+        case .pinned: L("已固定")
         }
     }
 
@@ -129,18 +129,18 @@ extension ClipItem {
         switch kind {
         case .image:
             if let w = pixelWidth, let h = pixelHeight {
-                return "图片 · \(w) × \(h)"
+                return L("图片 · %ld × %ld", w, h)
             }
-            return "图片"
+            return L("图片")
         case .file:
             let names = (filePaths ?? []).map { ($0 as NSString).lastPathComponent }
             switch names.count {
-            case 0: return "文件"
+            case 0: return L("文件")
             case 1: return names[0]
-            default: return "\(names[0]) 等 \(names.count) 个文件"
+            default: return L("%@ 等 %ld 个文件", names[0], names.count)
             }
         case .color:
-            return text ?? "颜色"
+            return text ?? L("颜色")
         case .link, .text:
             return Self.collapse(text ?? "")
         }
@@ -152,14 +152,14 @@ extension ClipItem {
         case .image:
             return Self.byteText(byteCount)
         case .file:
-            guard let first = filePaths?.first else { return "文件" }
+            guard let first = filePaths?.first else { return L("文件") }
             let parent = (first as NSString).deletingLastPathComponent
             return parent.replacingOccurrences(of: NSHomeDirectory(), with: "~")
         case .link:
             if let host = URL(string: text ?? "")?.host() { return host }
-            return "链接"
+            return L("链接")
         case .color:
-            return "颜色值"
+            return L("颜色值")
         case .text:
             // 行数直接数 UTF-8 里的换行字节：\n 在 UTF-8 中恒为单字节 0x0A
             // （UTF-8 自同步，0x0A 不会出现在任何多字节序列中），
@@ -167,20 +167,26 @@ extension ClipItem {
             let body = text ?? ""
             let lineCount = body.utf8.lazy.filter { $0 == 0x0A }.count + 1
             let count = body.count
-            return lineCount > 1 ? "\(count) 字符 · \(lineCount) 行" : "\(count) 字符"
+            return lineCount > 1 ? L("%ld 字符 · %ld 行", count, lineCount) : L("%ld 字符", count)
         }
     }
 
     /// 相对时间描述。
+    ///
+    /// 45 秒内显示「刚刚」；一周内用 Foundation 的 `RelativeDateTimeFormatter`，
+    /// 它按传入的 locale 自动处理单复数与语序（“1 minute ago” / “5 minutes ago”）；
+    /// 更早的条目直接显示按当前语言格式化的日期。
     var relativeTime: String {
         let seconds = Date.now.timeIntervalSince(lastUsedAt)
-        switch seconds {
-        case ..<45: return "刚刚"
-        case ..<3600: return "\(Int(seconds / 60)) 分钟前"
-        case ..<86_400: return "\(Int(seconds / 3600)) 小时前"
-        case ..<(86_400 * 7): return "\(Int(seconds / 86_400)) 天前"
-        default: return lastUsedAt.formatted(date: .abbreviated, time: .omitted)
+        if seconds < 45 { return L("刚刚") }
+        let language = Localization.shared.resolved
+        if seconds >= 86_400 * 7 {
+            let style = Date.FormatStyle(date: .abbreviated, time: .omitted).locale(language.locale)
+            return lastUsedAt.formatted(style)
         }
+        let formatter = Self.relativeFormatter
+        formatter.locale = language.locale
+        return formatter.localizedString(for: lastUsedAt, relativeTo: .now)
     }
 
     /// 是否命中搜索关键词（空格分词，全部命中才算匹配）。
@@ -233,8 +239,18 @@ extension ClipItem {
         return formatter
     }()
 
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.dateTimeStyle = .named
+        formatter.unitsStyle = .abbreviated
+        return formatter
+    }()
+
     static func byteText(_ bytes: Int) -> String {
-        // Formatter 的构造成本远高于一次格式化，全局缓存复用
-        byteFormatter.string(fromByteCount: Int64(bytes))
+        // Formatter 的构造成本远高于一次格式化，全局缓存复用。
+        // ByteCountFormatter 在 Swift 里不暴露 locale，字节单位各语言基本一致，跟随系统即可；
+        // 这里仍读一下 resolved，保证只依赖该文案的视图切语言时也能刷新。
+        _ = Localization.shared.resolved
+        return byteFormatter.string(fromByteCount: Int64(bytes))
     }
 }

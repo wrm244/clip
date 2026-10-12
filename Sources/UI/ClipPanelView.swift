@@ -82,7 +82,7 @@ struct ClipPanelView: View {
                 // 自适应翻转明暗，于是这行字会在黑白之间来回跳。
                 // 换成 SwiftUI 的 Text 走环境语义色，就和左边的放大镜图标同一套渲染，稳定。
                 if store.searchText.isEmpty {
-                    Text("搜索剪贴板历史")
+                    Text(L("搜索剪贴板历史"))
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                         .allowsHitTesting(false)
@@ -91,7 +91,7 @@ struct ClipPanelView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
                     .focused($searchFocused)
-                    .accessibilityLabel("搜索剪贴板历史")
+                    .accessibilityLabel(L("搜索剪贴板历史"))
             }
             if !store.searchText.isEmpty {
                 Button {
@@ -172,8 +172,8 @@ struct ClipPanelView: View {
     private var emptyState: some View {
         let searching = !store.searchText.trimmingCharacters(in: .whitespaces).isEmpty
         return EmptyHint(
-            title: searching ? "没有匹配的结果" : "暂无剪贴板历史",
-            message: searching ? "换个关键词试试" : "复制任意内容后，它会出现在这里",
+            title: searching ? L("没有匹配的结果") : L("暂无剪贴板历史"),
+            message: searching ? L("换个关键词试试") : L("复制任意内容后，它会出现在这里"),
             symbol: searching ? "magnifyingglass" : "clipboard"
         )
     }
@@ -182,7 +182,7 @@ struct ClipPanelView: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Text("\(store.visibleItems.count) 项")
+            Text(L("%ld 项", store.visibleItems.count))
                 .font(.system(size: 11, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
@@ -196,7 +196,7 @@ struct ClipPanelView: View {
             .buttonStyle(.plain)
             .focusEffectDisabled()
             .foregroundStyle(settings.isMonitoringEnabled ? Color.secondary : Color.orange)
-            .help(settings.isMonitoringEnabled ? "暂停记录" : "继续记录")
+            .help(settings.isMonitoringEnabled ? L("暂停记录") : L("继续记录"))
 
             // 没授权时一直显示，用户点一下就能去系统设置，不会"按了回车没反应"。
             if settings.autoPaste, !coordinator.paste.isTrusted {
@@ -209,19 +209,19 @@ struct ClipPanelView: View {
                 .buttonStyle(.plain)
                 .focusEffectDisabled()
                 .foregroundStyle(.orange)
-                .help("自动粘贴需要辅助功能权限，点此授权")
+                .help(L("自动粘贴需要辅助功能权限，点此授权"))
             }
 
             Spacer(minLength: 6)
 
-            KeyHint(keys: "↵", label: "粘贴")
+            KeyHint(keys: "↵", label: L("粘贴"))
             if isCompact {
-                KeyHint(keys: "esc", label: "关闭")
+                KeyHint(keys: "esc", label: L("关闭"))
             } else {
-                KeyHint(keys: "⌥↵", label: "纯文本")
-                KeyHint(keys: "→", label: "预览")
-                KeyHint(keys: "⌘P", label: "固定")
-                KeyHint(keys: "⌘⌫", label: "删除")
+                KeyHint(keys: "⌥↵", label: L("纯文本"))
+                KeyHint(keys: "→", label: L("预览"))
+                KeyHint(keys: "⌘P", label: L("固定"))
+                KeyHint(keys: "⌘⌫", label: L("删除"))
             }
 
             Spacer(minLength: 6)
@@ -235,7 +235,7 @@ struct ClipPanelView: View {
             .buttonStyle(.plain)
             .focusEffectDisabled()
             .foregroundStyle(store.previewVisible ? Color.accentColor : Color.secondary)
-            .help("切换预览面板 ⌘Y")
+            .help(L("切换预览面板 ⌘Y"))
 
             Button {
                 coordinator.openSettings()
@@ -246,7 +246,7 @@ struct ClipPanelView: View {
             .buttonStyle(.plain)
             .focusEffectDisabled()
             .foregroundStyle(.secondary)
-            .help("设置 ⌘,")
+            .help(L("设置 ⌘,"))
         }
         .padding(.horizontal, PanelMetrics.padding)
         .frame(height: PanelMetrics.footerHeight)
