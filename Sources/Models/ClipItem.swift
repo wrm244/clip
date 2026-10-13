@@ -185,8 +185,7 @@ extension ClipItem {
             let style = Date.FormatStyle(date: .abbreviated, time: .omitted).locale(language.locale)
             return lastUsedAt.formatted(style)
         }
-        let formatter = Self.relativeFormatter
-        formatter.locale = language.locale
+        let formatter = Self.relativeFormatter(for: language.locale)
         return formatter.localizedString(for: lastUsedAt, relativeTo: .now)
     }
 
@@ -251,12 +250,21 @@ extension ClipItem {
         return formatter
     }()
 
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
+    /// 按语言缓存的相对时间格式化器。
+    /// 不能共用一个 static 再每次改它的 `locale`：那是可变共享状态，将来一旦有并发
+    /// 调用就会互相踩踏。`NSCache` 本身线程安全。
+    private static let relativeFormatters = NSCache<NSString, RelativeDateTimeFormatter>()
+
+    private static func relativeFormatter(for locale: Locale) -> RelativeDateTimeFormatter {
+        let key = locale.identifier as NSString
+        if let cached = relativeFormatters.object(forKey: key) { return cached }
         let formatter = RelativeDateTimeFormatter()
+        formatter.locale = locale
         formatter.dateTimeStyle = .named
         formatter.unitsStyle = .abbreviated
+        relativeFormatters.setObject(formatter, forKey: key)
         return formatter
-    }()
+    }
 
     static func byteText(_ bytes: Int) -> String {
         // Formatter 的构造成本远高于一次格式化，全局缓存复用。
