@@ -79,9 +79,28 @@ struct PreviewPane: View {
         case .link:
             linkDetail(for: item)
         case .text:
-            Text(item.text ?? "")
+            textDetail(item.text ?? "")
+        }
+    }
+
+    /// 文本预览上限（字符）。
+    ///
+    /// 单条文本上限 120KB，整段交给 SwiftUI / TextKit 布局会长时间占住主线程。
+    /// 预览窗只需要看个大概，超出部分截断并提示；完整内容仍可通过「复制 / 粘贴」取出。
+    private static let textPreviewLimit = 8_000
+
+    @ViewBuilder
+    private func textDetail(_ text: String) -> some View {
+        let truncated = text.count > Self.textPreviewLimit
+        VStack(alignment: .leading, spacing: 8) {
+            Text(truncated ? String(text.prefix(Self.textPreviewLimit)) : text)
                 .font(.system(size: 12, design: .monospaced))
                 .textSelection(.enabled)
+            if truncated {
+                Text(L("文本较长，仅预览前 %ld 个字符", Self.textPreviewLimit))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
         }
     }
 

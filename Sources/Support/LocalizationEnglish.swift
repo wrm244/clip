@@ -177,6 +177,7 @@ enum LocalizationEnglish {
         "尺寸": "Dimensions",
         "体积": "Size",
         "在浏览器中打开": "Open in Browser",
+        "文本较长，仅预览前 %ld 个字符": "Long text — previewing the first %ld characters only",
 
         // MARK: 菜单栏面板
         "%ld 条历史 · %@ 呼出": "%ld items · open with %@",
