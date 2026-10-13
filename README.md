@@ -99,6 +99,35 @@ xcodebuild -project Clip.xcodeproj -scheme Clip \
 > 磁盘上不要同时存在多份 Clip.app（例如 Debug 和 Release 各一份）——它们共用同一个数据目录；
 > 应用启动时会检测到「另一份副本」并让位，避免两个进程互相覆盖历史。
 
+### 代码签名（自签名证书）
+
+工程用自签名证书 `Clip Self Signed` 签名（`project.yml` 里 `CODE_SIGN_IDENTITY`），**不要退回 ad-hoc**。
+
+**为什么必须换掉 ad-hoc**：ad-hoc 签名没有稳定身份，macOS 给隐私授权（TCC，比如「辅助功能」）记录
+的「指定要求」只能是 `cdhash H"…"`——对整份二进制的哈希。每次重新构建 / 发新版 cdhash 都变，
+授权随即失效，用户更新后要重新授权。换成自签名证书后指定要求变成
+`identifier "com.river.Clip" and certificate leaf = H"…"`，只与 bundle id + 证书绑定，**二进制怎么变都保留授权**。
+（切换后需要「删掉旧的辅助功能条目 → 重新授权」一次，之后覆盖安装就不用再授权了。）
+
+创建证书（一次性，不用花钱）：
+
+1. 「钥匙串访问」→ 菜单「钥匙串访问 → 证书助理 → 创建证书…」；
+2. 名称填 `Clip Self Signed`，身份类型选「自签名根」，证书类型选「代码签名」，其余默认；
+3. 双击该证书 → 展开「信任」→「使用此证书时」设为「始终信任」；
+4. 验证：`security find-identity -v -p codesigning` 应列出 `"Clip Self Signed"`。
+
+证书本身就是 App 的身份，**别弄丢或重建**（重建 = 换身份，授权又会重置）。换机器时把证书导成 `.p12`
+再 `security import` 回来即可。`.p12` 已被 `.gitignore` 忽略，不会入库。
+
+#### CI 签名证书
+
+`release.yml` 在构建前从 GitHub Secrets 导入证书：
+
+- `P12_BASE64`：`base64 -i "Clip Self Signed.p12" | pbcopy`
+- `P12_PASSWORD`：导出 p12 时设置的密码
+
+两个 Secret 都没配时，CI 自动回退 ad-hoc 签名（仍能出包，但用户更新后要重新授权辅助功能）。
+
 ### 打包 DMG
 
 用仓库自带的脚本（只用系统工具，macOS 27 起走 `diskutil image create` 而非已废弃的 `hdiutil create`）：
@@ -268,7 +297,7 @@ HIG 的原话是「Liquid Glass 是**导航和控件**的功能层」和「**不
 ## 目录结构
 
 ```
-project.yml                 XcodeGen 工程定义（macOS 27.0、Swift 6 严格并发、ad-hoc 签名）
+project.yml                 XcodeGen 工程定义（macOS 27.0、Swift 6 严格并发、自签名证书）
 Support/Info.plist          由 project.yml 生成（LSUIElement、clip:// URL Scheme）
 Sources/
   App/
@@ -375,11 +404,11 @@ App Group 会被系统忽略（trustd 报 `invalid application signature`）。�
 ## 说明与限制
 
 - 自动粘贴依赖辅助功能权限；未授权时只复制到剪贴板并提示。
-- 使用 ad-hoc 签名（`CODE_SIGN_IDENTITY = "-"`），每次重新构建后系统可能要求重新授权辅助功能。
-  分发时请换成自己的开发者证书。
+- 用自签名证书 `Clip Self Signed` 签名（见「构建 → 代码签名」）。这样辅助功能授权能跨版本保留；
+  若为 ad-hoc 签名，每次重新构建 / 更新都会要求重新授权。想上架或公证分发则需换成 Developer ID 证书。
 - 「登录时启动」用 `SMAppService.mainApp`，应用不在 `/Applications` 下时可能失败，设置界面会显示错误。
 - 图片默认上限 8MB（超限会降采样），条目默认上限 300 条，固定条目永不淘汰。
 - 桌面小组件靠 `temporary-exception.files.home-relative-path.read-only` 读主 App 的快照目录。
-  这是免签（ad-hoc）构建下唯一可行的共享通道；App Group 在免签下会被忽略。
+  这是没有 App Group 的构建下唯一可行的共享通道；App Group 需要 Team ID 与描述文件，自签名下同样会被忽略。
   若要上架 Mac App Store / 公证分发，应改用 App Group 并配上正式签名。
   快照里会包含最近 12 条历史的标题文字，请注意这一隐私面（目前无法关闭）。
