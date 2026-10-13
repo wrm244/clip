@@ -157,8 +157,8 @@ base64 -i /tmp/Clip-Identity.p12 | tr -d '\n' | pbcopy
 用仓库自带的脚本（只用系统工具，macOS 27 起走 `diskutil image create` 而非已废弃的 `hdiutil create`）：
 
 ```bash
-Scripts/make-dmg.sh build/Build/Products/Release/Clip.app dist v1.0.5
-# → dist/Clip-1.0.5.dmg（内含 /Applications 软链接，拖进去即可安装）
+Scripts/make-dmg.sh build/Build/Products/Release/Clip.app dist v1.0.6
+# → dist/Clip-1.0.6.dmg（内含 /Applications 软链接，拖进去即可安装）
 ```
 
 ### 自动发版（GitHub Actions）
@@ -169,7 +169,7 @@ Scripts/make-dmg.sh build/Build/Products/Release/Clip.app dist v1.0.5
 构建号用 run number，所以 DMG 里的版本跟标签一致。
 
 ```bash
-git tag v1.0.5 && git push origin v1.0.5
+git tag v1.0.6 && git push origin v1.0.6
 ```
 
 可用仓库变量微调：`MACOS_RUNNER`（默认 `macos-27`）、`CLIP_XCODE_VERSION`、`CLIP_ARCHS`（默认 `arm64`，
