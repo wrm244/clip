@@ -186,6 +186,8 @@ enum LocalizationEnglish {
         "打开剪贴板历史": "Open Clipboard History",
         "最近": "Recent",
         "还没有任何记录": "No history yet",
+        "打开设置": "Open Settings",
+        "清空记录或打开数据目录": "Clear history or show the data folder",
         "清空未固定记录": "Clear Unpinned",
         "清空全部记录": "Clear All",
         "在访达中显示数据目录": "Show Data Folder in Finder",

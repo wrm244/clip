@@ -118,17 +118,24 @@ struct MenuBarView: View {
     // MARK: 底部动作
 
     private var footerBar: some View {
-        // 三个动作共用 BarActionLabel：同样的字号、间距、高度、悬停底色。
-        HStack(spacing: 6) {
+        // 三个动作共用系统的 accessoryBarAction 样式：原生悬停 / 按下反馈、
+        // 原生文字色，三项观感天然一致，不再自己画悬停底色。
+        HStack(spacing: 4) {
             Button {
                 MenuBarPanel.dismiss?()
                 Task { @MainActor in coordinator.openSettings() }
             } label: {
                 BarActionLabel(title: L("设置"), symbol: "gearshape")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.accessoryBarAction)
+            .help(L("打开设置"))
             .frame(maxWidth: .infinity)
 
+            // 下拉菜单保留系统的菜单指示箭头（chevron），让「点开还有更多选项」一目了然。
+            //
+            // 用 menuStyle(.button) + buttonStyle，而不是已废弃的 .borderlessButton：
+            // 后者会把标签强制画成默认控件文字色，无视 label 上的 foregroundStyle，
+            // 于是「设置」是灰色、「清空」是深色，两者对不上。
             Menu {
                 Button(L("清空未固定记录")) {
                     coordinator.clearHistory(keepingPinned: true)
@@ -146,8 +153,10 @@ struct MenuBarView: View {
             } label: {
                 BarActionLabel(title: L("清空"), symbol: "trash")
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
+            .menuStyle(.button)
+            .buttonStyle(.accessoryBarAction)
+            .menuIndicator(.visible)
+            .help(L("清空记录或打开数据目录"))
             .frame(maxWidth: .infinity)
 
             Button {
@@ -155,7 +164,8 @@ struct MenuBarView: View {
             } label: {
                 BarActionLabel(title: L("退出"), symbol: "power", isDestructive: true)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.accessoryBarAction)
+            .help(L("退出 Clip"))
             .frame(maxWidth: .infinity)
         }
         .frame(height: 26)
@@ -163,12 +173,17 @@ struct MenuBarView: View {
 }
 
 /// 菜单栏底部的动作按钮外观。设置 / 清空 / 退出共用同一套排版。
+///
+/// 悬停 / 按下反馈交给系统的 `.accessoryBarAction`（见 `footerBar`），
+/// 这里只负责图标 + 文案的排版与语义色，避免两套高亮叠在一起。
+///
+/// 注意：这里不能用 `.secondary`。下拉菜单的 `Menu` 标签会忽略
+/// `foregroundStyle`，始终用默认控件文字色绘制；若两旁按钮单独用灰色，
+/// 三者颜色就会对不上。统一用默认色（退出用红色）才一致。
 private struct BarActionLabel: View {
     let title: String
     let symbol: String
     var isDestructive: Bool = false
-
-    @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 5) {
@@ -176,16 +191,12 @@ private struct BarActionLabel: View {
                 .font(.system(size: 11, weight: .medium))
             Text(title)
                 .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
         }
-        .foregroundStyle(isDestructive ? Color.red : Color.secondary)
+        .foregroundStyle(isDestructive ? Color.red : Color.primary)
         .frame(maxWidth: .infinity)
         .frame(height: 24)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isHovering ? Color.primary.opacity(0.09) : Color.clear)
-        )
         .contentShape(.rect)
-        .onHover { isHovering = $0 }
     }
 }
 
