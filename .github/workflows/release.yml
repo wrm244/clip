@@ -22,7 +22,7 @@ jobs:
     # 需要带 Xcode 27 / macOS 27 SDK 的镜像。若官方还没提供 macos-27，
     # 可在仓库 Settings → Variables 里设 MACOS_RUNNER（如 macos-26）临时切换，
     # 再用下面的 CLIP_XCODE_VERSION 指定 27.x 工具链。
-    runs-on: ${{ vars.MACOS_RUNNER || 'macos-27' }}
+    runs-on: ${{ vars.MACOS_RUNNER || 'xcode-27' }}
 
     steps:
       - name: 检出代码
