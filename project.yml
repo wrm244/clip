@@ -26,8 +26,18 @@ settings:
     GCC_NO_COMMON_BLOCKS: YES
     DEAD_CODE_STRIPPING: YES
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # 代码签名：用自签名证书（"Clip Self Signed"）代替 ad-hoc。
+    #
+    # 为什么必须换掉 ad-hoc：ad-hoc 签名没有稳定身份，系统给 TCC（隐私授权）记录的
+    # 「指定要求」只能是 `cdhash H"…"`——也就是对整份二进制的哈希。每次重新构建 /
+    # 发新版 cdhash 都会变，辅助功能授权随即失效，用户要重新授权。
+    # 换成自签名证书后，指定要求变成 `identifier "com.river.Clip" and certificate
+    # leaf = H"…"`，只跟 bundle id + 证书绑定，二进制怎么变都保留授权。
+    #
+    # 证书需在签名钥匙串中：本地导入 p12；CI 由 release.yml 从 p12 Secret 导入。
+    # 没有这张证书时，可在命令行覆盖回退：CODE_SIGN_IDENTITY="-"
     CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_IDENTITY: "Clip Self Signed"
     DEVELOPMENT_TEAM: ""
     ENABLE_HARDENED_RUNTIME: NO
     ENABLE_APP_SANDBOX: NO

@@ -7,3 +7,9 @@ DerivedData/
 .research/
 xcuserdata/
 dist/
+
+# 代码签名证书 / 私钥，绝不入库
+*.p12
+*.pfx
+*.mobileprovision
+Signing.local.xcconfig
