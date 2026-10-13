@@ -164,12 +164,33 @@ final class ClipSettings {
     @ObservationIgnored var onLanguageChange: (() -> Void)?
 
     var panelWidth: Double = 460 {
-        didSet { defaults.set(panelWidth, forKey: Key.panelWidth) }
+        didSet { if panelWidth != oldValue { schedulePanelMetricsSave() } }
     }
 
     /// 弹窗高度。固定值：不随条目数收缩，避免窗口上下跳动。
     var panelHeight: Double = 520 {
-        didSet { defaults.set(panelHeight, forKey: Key.panelHeight) }
+        didSet { if panelHeight != oldValue { schedulePanelMetricsSave() } }
+    }
+
+    /// 面板尺寸的落盘任务。拖动尺寸滑杆时值每帧都在变，逐帧写 UserDefaults
+    /// 纯属浪费，合并成一次（窗口本身仍然实时跟着值变）。
+    @ObservationIgnored private var panelMetricsSaveTask: Task<Void, Never>?
+
+    private func schedulePanelMetricsSave() {
+        panelMetricsSaveTask?.cancel()
+        panelMetricsSaveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled, let self else { return }
+            self.persistPanelMetrics()
+        }
+    }
+
+    /// 立即把面板尺寸写入 UserDefaults。退出前调一次，避免去抖窗口内丢掉最后一拖。
+    func persistPanelMetrics() {
+        panelMetricsSaveTask?.cancel()
+        panelMetricsSaveTask = nil
+        defaults.set(panelWidth, forKey: Key.panelWidth)
+        defaults.set(panelHeight, forKey: Key.panelHeight)
     }
 
     // MARK: 快捷键

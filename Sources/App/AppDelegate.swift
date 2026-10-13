@@ -43,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // 先停采集，避免 drain 期间又插进新的写入。
         AppCoordinator.shared.monitor.stop()
+        // 面板尺寸是去抖落盘的，退出前补一笔。
+        AppCoordinator.shared.settings.persistPanelMetrics()
         Task { @MainActor in
             await AppCoordinator.shared.store.drainSavesForTermination()
             NSApp.reply(toApplicationShouldTerminate: true)
