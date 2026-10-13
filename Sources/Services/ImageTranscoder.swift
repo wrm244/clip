@@ -34,21 +34,26 @@ actor ImageTranscoder {
         // 只按像素上限缩一次是不够的（例如 4096px 的 PNG 仍可能有十几 MB）。
         // 这里按「面积换体积」逐轮收缩最长边，最多 4 轮，每轮按实测比例估算下一档，
         // 保证既不会无限编码，也不会把一张本来能存的图直接丢掉。
-        var limit = maxPixel
-        var image: CGImage?
+        //
+        // 关键：只在第一轮从源图解码，之后直接在内存里缩小已解码的位图，
+        // 不再回源图重复解码（旧实现每轮都重新解出一张最长边 4096px 的位图，
+        // 既白费 CPU，峰值内存也叠加）。
+        guard var image = decode(source, maxPixel: maxPixel, originalWidth: pixelWidth, originalHeight: pixelHeight) else {
+            return nil
+        }
         var png: Data?
         for _ in 0..<4 {
-            guard let decoded = decode(source, maxPixel: limit, originalWidth: pixelWidth, originalHeight: pixelHeight),
-                  let encoded = encode(decoded, type: UTType.png.identifier as CFString) else { return nil }
-            image = decoded
+            guard let encoded = encode(image, type: UTType.png.identifier as CFString) else { return nil }
             png = encoded
             if encoded.count <= maxBytes { break }
+            let longest = max(image.width, image.height)
             let ratio = sqrt(Double(maxBytes) / Double(encoded.count)) * 0.9
-            let next = max(256, Int(Double(limit) * min(ratio, 0.8)))
-            if next >= limit { break }   // 已经缩到下限，再缩也不会更小
-            limit = next
+            let next = max(256, Int(Double(longest) * min(ratio, 0.8)))
+            if next >= longest { break }   // 已经缩到下限，再缩也不会更小
+            guard let scaled = downscale(image, maxPixel: next) else { break }
+            image = scaled
         }
-        guard let image, let png, png.count <= maxBytes else { return nil }
+        guard let png, png.count <= maxBytes else { return nil }
 
         let thumbnailOptions: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -81,6 +86,28 @@ actor ImageTranscoder {
             return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
         }
         return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
+
+    /// 在内存里等比缩小已解码的位图（不再回源图解码）。
+    private func downscale(_ image: CGImage, maxPixel: Int) -> CGImage? {
+        let longest = max(image.width, image.height)
+        guard longest > maxPixel else { return image }
+        let scale = Double(maxPixel) / Double(longest)
+        let width = max(1, Int((Double(image.width) * scale).rounded()))
+        let height = max(1, Int((Double(image.height) * scale).rounded()))
+        let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
     }
 
     private func encode(_ image: CGImage, type: CFString, properties: [CFString: Any] = [:]) -> Data? {
