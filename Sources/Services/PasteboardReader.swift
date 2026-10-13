@@ -59,19 +59,23 @@ enum PasteboardReader {
 
     // MARK: 文件
 
+    /// 一次最多记录的路径数。几千个文件的非懒加载 ForEach 会一次性建出几千个视图，
+    /// 预览窗格直接卡死；超出部分截断（哈希也按截断后的列表算，保持一致）。
+    private static let maxFilePaths = 500
+
     private static func readFiles(_ pasteboard: NSPasteboard, sourceName: String?, sourceBundleID: String?) -> ClipDraft? {
         let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
         guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL],
               !urls.isEmpty else { return nil }
-        let paths = urls.filter(\.isFileURL).map(\.path)
-        guard !paths.isEmpty else { return nil }
+        let allPaths = urls.filter(\.isFileURL).map(\.path)
+        guard !allPaths.isEmpty else { return nil }
+        let paths = allPaths.count > maxFilePaths ? Array(allPaths.prefix(maxFilePaths)) : allPaths
         let text = paths.joined(separator: "\n")
         return ClipDraft(
             kind: .file,
             text: text,
             filePaths: paths,
             byteCount: text.utf8.count,
-            contentHash: ContentHash.sha256("file:" + text),
             sourceName: sourceName,
             sourceBundleID: sourceBundleID
         )
@@ -97,7 +101,6 @@ enum PasteboardReader {
             kind: kind,
             text: text,
             byteCount: text.utf8.count,
-            contentHash: ContentHash.sha256("text:" + text),
             sourceName: sourceName,
             sourceBundleID: sourceBundleID
         )
@@ -127,6 +130,19 @@ enum PasteboardReader {
         draft.imageBlob = "\(id.uuidString).png"
         draft.thumbBlob = "\(id.uuidString).jpg"
         return draft
+    }
+
+    /// 计算文本 / 文件草稿的去重哈希。
+    ///
+    /// SHA-256 是 O(内容长度) 的，文本和文件路径列表可能很长，所以调用方应把它放到
+    /// 后台执行（见 `ClipboardMonitor.poll`），不要占着主线程。图片的哈希由
+    /// `ImageTranscoder` 在后台算好，这里原样返回。
+    nonisolated static func finalizeHash(_ draft: ClipDraft) -> ClipDraft {
+        guard draft.kind != .image else { return draft }
+        var result = draft
+        let prefix = draft.kind == .file ? "file:" : "text:"
+        result.contentHash = ContentHash.sha256(prefix + (draft.text ?? ""))
+        return result
     }
 }
 

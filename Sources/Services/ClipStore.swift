@@ -52,6 +52,9 @@ final class ClipStore {
     private var pendingSave: Task<Void, Never>?
     /// 已排队写入的代数：每排一笔自增。`drainSaves` 靠它识别等待期间有没有新写入插队。
     private var saveGeneration: UInt64 = 0
+    /// 「清空全部数据」进行中。置位期间拒绝新的采集，并让在途采集在检查点退出——
+    /// 否则它们会在 `eraseEverything` 清库 / 删 Blobs 之后又把条目写回来。
+    private var isErasing = false
     private var toastTask: Task<Void, Never>?
     /// 搜索索引缓存：id → 小写拼接的搜索文本（含本地化类型标题）。
     ///
@@ -59,18 +62,23 @@ final class ClipStore {
     /// 不动内容字段，缓存始终有效；新条目在重建可见列表时懒加载补齐，
     /// 删除条目 / 切换语言时随条目一起清掉。
     ///
-    /// 现在**所有条目都进索引**（旧版对 >64KB 的大文本不缓存，导致每个按键都要
-    /// 重新拼接 + 小写化）。配合搜索去抖，大文本也只会在首次搜索时算一次；代价是
-    /// 索引会再多占一份文本内存——但条目文本本身已在内存里，同一数量级。
-    private var searchIndex: [ClipItem.ID: String] = [:]
+    /// 只缓存不超过 `maxIndexedHaystackBytes` 的条目：超长文本（单条上限 120KB）
+    /// 如果全部进索引，会再多占一份接近全文的内存（1000 条最坏 ~200MB）。
+    /// 大条目在搜索时现算——主搜索路径走后台去抖重建，代价可接受。
+    @ObservationIgnored private var searchIndex: [ClipItem.ID: String] = [:]
 
     /// id → 在 `items` 中的下标。取代各处 `items.firstIndex(where:)` 的 O(n) 线性查找。
     /// 任何改变 `items` 内容或顺序的操作后都要调 `reindexItems()`。
-    private var itemsByID: [ClipItem.ID: Int] = [:]
+    /// 标 `@ObservationIgnored`：内部索引，不是界面状态，读它不该让视图失效。
+    @ObservationIgnored private var itemsByID: [ClipItem.ID: Int] = [:]
 
     /// id → 在 `visibleItems` 中的下标。键盘导航每按一次方向键都会查它，
     /// 不能是线性查找。任何给 `visibleItems` 赋值后都要调 `reindexVisible()`。
-    private var visibleIndexByID: [ClipItem.ID: Int] = [:]
+    /// 标 `@ObservationIgnored`：同上，内部索引不参与观察（`selectedItem` 会读它）。
+    @ObservationIgnored private var visibleIndexByID: [ClipItem.ID: Int] = [:]
+
+    /// 单条被缓存进搜索索引的最大字节数（见 `searchHaystack(for:)`）。
+    private static let maxIndexedHaystackBytes = 16 * 1024
 
     /// 搜索去抖 + 后台匹配的任务。连续输入期间前一个任务被取消。
     private var searchTask: Task<Void, Never>?
@@ -126,7 +134,9 @@ final class ClipStore {
 
     /// 采集到一块新的剪贴板内容。
     func ingest(_ draft: ClipDraft) async {
-        guard settings.isMonitoringEnabled else { return }
+        // 清空操作进行中时丢弃新内容：否则在途采集会在 `eraseEverything` 清库之后
+        // 又把条目（及其已被删除的 Blob 引用）写回来。
+        guard settings.isMonitoringEnabled, !isErasing else { return }
 
         var item = ClipItem(
             id: draft.id,
@@ -166,6 +176,9 @@ final class ClipStore {
             }
         }
 
+        // 转码 / 解析期间可能开始了「清空全部数据」：此时直接丢弃，别写库。
+        guard !isErasing else { return }
+
         // 阶段二：先查一次重。命中就只更新用量，不用白写一遍图。
         if let duplicate = duplicateIndex(of: item) {
             bump(duplicate)
@@ -180,6 +193,12 @@ final class ClipStore {
         // 「缩略图闪一下 / 预览窗里的图晚一拍出现，把下面的尺寸体积挤下去」。
         for blob in blobWrites {
             await storage.writeBlob(blob.data, named: blob.name)
+        }
+
+        // 落盘期间又开始了「清空全部数据」：刚写的 Blob 已被删掉，直接放弃。
+        guard !isErasing else {
+            await storage.removeBlobs(blobWrites.map { $0.name })
+            return
         }
 
         // 阶段四（无 await，原子）：重查重 → 插入 → 排序 → 淘汰 → 重建视图。
@@ -253,6 +272,7 @@ final class ClipStore {
         let blobs = items[index].blobNames
         searchIndex[removedID] = nil
         detailCache[removedID] = nil
+        ImageCache.shared.remove(names: blobs)
         items.remove(at: index)
         reindexItems()
         rebuildVisible()
@@ -287,6 +307,7 @@ final class ClipStore {
         notifyHistoryChanged()
         let ids = dropped.map(\.id)
         let blobs = dropped.flatMap(\.blobNames)
+        ImageCache.shared.remove(names: blobs)
         enqueueSave { [storage] in
             await storage.delete(ids: ids)
             await storage.removeBlobs(blobs)
@@ -295,9 +316,14 @@ final class ClipStore {
     }
 
     func eraseEverything() async {
+        // 闸门置位后：新采集会被 ingest 的 guard 丢弃，在途采集也会在各自的检查点退出，
+        // 避免它们在清库 / 删 Blobs 之后又把数据写回来。
+        isErasing = true
+        defer { isErasing = false }
         items = []
         searchIndex = [:]
         detailCache = [:]
+        ImageCache.shared.clear()
         reindexItems()
         rebuildVisible()
         // 先把排队中的写入全部执行完再整体清空，避免在途写入把数据“复活”。
@@ -419,7 +445,10 @@ final class ClipStore {
     private func searchHaystack(for item: ClipItem) -> String {
         if let cached = searchIndex[item.id] { return cached }
         let value = item.searchHaystack
-        searchIndex[item.id] = value
+        // 只缓存小条目，避免索引再多占一份接近全文的内存（见 searchIndex 声明）。
+        if value.utf8.count <= Self.maxIndexedHaystackBytes {
+            searchIndex[item.id] = value
+        }
         return value
     }
 
@@ -501,7 +530,10 @@ final class ClipStore {
                         let body = item.searchableBody
                         let title = kindTitles[item.kind] ?? ""
                         let value = body.isEmpty ? title : title + "\n" + body
-                        index[item.id] = value
+                        // 与 searchHaystack(for:) 保持一致：只缓存小条目。
+                        if value.utf8.count <= ClipStore.maxIndexedHaystackBytes {
+                            index[item.id] = value
+                        }
                         haystack = value
                     }
                     if item.matches(keywords: keywords, haystack: haystack) {
@@ -542,7 +574,10 @@ final class ClipStore {
             }
         }
         filterCounts = counts
-        if filterCounts[.pinned] == 0, filter == .pinned {
+        // 注意用 count(for:)：filterCounts 里没有 .pinned 键时值是 nil，
+        // 直接写 filterCounts[.pinned] == 0 会得到 false（nil == 0 不成立），
+        // 「固定」空分类就永远不回退。
+        if count(for: .pinned) == 0, filter == .pinned {
             filter = .all
         }
         ensureSelection()
@@ -599,6 +634,7 @@ final class ClipStore {
         }
         let droppedIDs = dropped.map(\.id)
         let droppedBlobs = dropped.flatMap(\.blobNames)
+        ImageCache.shared.remove(names: droppedBlobs)
         enqueueSave { [storage] in
             await storage.delete(ids: droppedIDs)
             await storage.removeBlobs(droppedBlobs)
@@ -641,5 +677,12 @@ final class ClipStore {
             // （旧版「清空全部数据」必卡死就是这个原因）。
             if saveGeneration == generation { return }
         }
+    }
+
+    /// 退出前等待所有在途写入落库。
+    /// 配合 `applicationShouldTerminate` 的 `.terminateLater` 使用，
+    /// 否则 `enqueueSave` 任务链尾部若没跑完，最后一次复制会丢。
+    func drainSavesForTermination() async {
+        await drainSaves()
     }
 }

@@ -30,12 +30,10 @@ final class WidgetFeedWriter {
 
     /// 立即导出并让系统刷新小组件时间线。
     func write(items: [ClipItem]) async {
-        let fileManager = FileManager.default
-        let thumbsDirectory = WidgetFeed.thumbsDirectoryURL()
-        try? fileManager.createDirectory(at: thumbsDirectory, withIntermediateDirectories: true)
-
+        // 先在主线程把展示字符串渲染好（`title` / `detail` 要走 `L()`），
+        // 其余磁盘 I/O 全部丢到后台（见 persist）。
         var feedItems: [WidgetFeedItem] = []
-        var keptThumbs: Set<String> = []
+        var thumbWrites: [(name: String, data: Data)] = []
 
         for item in items.prefix(limit) {
             var thumbName: String?
@@ -43,10 +41,8 @@ final class WidgetFeedWriter {
             if item.kind == .image, let blob = item.thumbBlob,
                let data = await storage.readBlob(named: blob) {
                 let name = "\(item.id.uuidString).jpg"
-                if (try? data.write(to: thumbsDirectory.appending(path: name), options: .atomic)) != nil {
-                    thumbName = name
-                    keptThumbs.insert(name)
-                }
+                thumbName = name
+                thumbWrites.append((name, data))
             }
             feedItems.append(WidgetFeedItem(
                 id: item.id,
@@ -59,21 +55,41 @@ final class WidgetFeedWriter {
             ))
         }
 
-        // 清掉已不再被引用的缩略图，避免目录随历史无限增长。
-        if let existing = try? fileManager.contentsOfDirectory(at: thumbsDirectory, includingPropertiesForKeys: nil) {
-            for file in existing where !keptThumbs.contains(file.lastPathComponent) {
-                try? fileManager.removeItem(at: file)
-            }
-        }
-
         let feed = WidgetFeed(
             language: Localization.shared.resolved.rawValue,
             generatedAt: .now,
             items: feedItems
         )
-        if let data = try? JSONEncoder.widget.encode(feed) {
-            try? data.write(to: WidgetFeed.fileURL(), options: .atomic)
-        }
-        WidgetCenter.shared.reloadAllTimelines()
+        await Self.persist(feed: feed, thumbWrites: thumbWrites)
+    }
+
+    /// 落盘 + 刷新小组件，整段在后台执行。
+    /// 逐张缩略图写盘、目录扫描、JSON 编码原先都跑在主线程上，条目一多就会卡。
+    nonisolated static func persist(feed: WidgetFeed, thumbWrites: [(name: String, data: Data)]) async {
+        await Task.detached(priority: .utility) {
+            let fileManager = FileManager.default
+            let thumbsDirectory = WidgetFeed.thumbsDirectoryURL()
+            try? fileManager.createDirectory(at: thumbsDirectory, withIntermediateDirectories: true)
+
+            var keptThumbs: Set<String> = []
+            for write in thumbWrites {
+                if (try? write.data.write(to: thumbsDirectory.appending(path: write.name), options: .atomic)) != nil {
+                    keptThumbs.insert(write.name)
+                }
+            }
+
+            // 清掉已不再被引用的缩略图，避免目录随历史无限增长。
+            if let existing = try? fileManager.contentsOfDirectory(at: thumbsDirectory, includingPropertiesForKeys: nil) {
+                for file in existing where !keptThumbs.contains(file.lastPathComponent) {
+                    try? fileManager.removeItem(at: file)
+                }
+            }
+
+            if let data = try? JSONEncoder.widget.encode(feed) {
+                try? data.write(to: WidgetFeed.fileURL(), options: .atomic)
+            }
+            // 只刷新本 App 的小组件；reloadAllTimelines() 会把系统里所有 App 的小组件都重置一遍。
+            WidgetCenter.shared.reloadTimelines(ofKind: WidgetFeed.widgetKind)
+        }.value
     }
 }

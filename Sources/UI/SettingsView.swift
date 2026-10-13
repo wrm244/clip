@@ -50,6 +50,53 @@ enum SettingsPane: String, CaseIterable, Identifiable {
 @Observable
 final class SettingsUIModel {
     var pane: SettingsPane = .general
+
+    /// 快捷键录制状态。放在模型里而不是视图 `@State`：设置窗口关闭时
+    /// （`isReleasedWhenClosed = false`，视图不一定收到 `onDisappear`），
+    /// 控制器仍能可靠地调用 `stopShortcutRecording()`，否则录制期间被注销的
+    /// 全局热键会永久失效、本地事件监视器也会残留。
+    private(set) var isRecordingShortcut = false
+    var shortcutMessage: String?
+
+    /// 录制结束（取消 / 关闭窗口）时需要重新注册全局热键，所以持有一个协调器引用。
+    @ObservationIgnored weak var coordinator: AppCoordinator?
+    @ObservationIgnored private var shortcutMonitor: Any?
+
+    /// 开始录制：先注销全局热键（否则按到当前组合键会被直接吞掉，录不进来），
+    /// 再装一个本地 keyDown 监视器抓组合键。拿到有效组合键后回调 `onShortcut`。
+    func startShortcutRecording(onShortcut: @escaping (Shortcut) -> Void) {
+        stopShortcutRecording()
+        isRecordingShortcut = true
+        shortcutMessage = nil
+        HotKeyCenter.shared.unregister()
+        shortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            guard let self else { return event }
+            if event.keyCode == 53 {
+                self.shortcutMessage = L("已取消")
+                self.stopShortcutRecording()
+                return nil
+            }
+            if let shortcut = Shortcut(event: event), shortcut.isValid {
+                onShortcut(shortcut)
+                self.shortcutMessage = L("已更新为 %@", shortcut.displayString)
+                self.stopShortcutRecording()
+                return nil
+            }
+            self.shortcutMessage = L("这个按键不能作为全局快捷键，请加上 ⌘、⌥ 或 ⌃")
+            return nil
+        }
+    }
+
+    /// 结束录制并恢复全局热键注册。幂等。
+    func stopShortcutRecording() {
+        guard isRecordingShortcut || shortcutMonitor != nil else { return }
+        isRecordingShortcut = false
+        if let shortcutMonitor {
+            NSEvent.removeMonitor(shortcutMonitor)
+            self.shortcutMonitor = nil
+        }
+        coordinator?.applyHotKey()
+    }
 }
 
 struct SettingsView: View {
@@ -282,12 +329,8 @@ struct AppearanceSettings: View {
 // MARK: - 快捷键
 
 struct ShortcutSettings: View {
-    @Environment(AppCoordinator.self) private var coordinator
     @Environment(ClipSettings.self) private var settings
-
-    @State private var isRecording = false
-    @State private var monitor: Any?
-    @State private var message: String?
+    @Environment(SettingsUIModel.self) private var model
 
     var body: some View {
         Form {
@@ -297,7 +340,7 @@ struct ShortcutSettings: View {
                         recorderButton
                         Button {
                             settings.hotkey = .panelDefault
-                            message = L("已恢复为默认快捷键")
+                            model.shortcutMessage = L("已恢复为默认快捷键")
                         } label: {
                             Image(systemName: "arrow.counterclockwise")
                         }
@@ -306,7 +349,7 @@ struct ShortcutSettings: View {
                         .help(L("恢复默认快捷键"))
                     }
                 }
-                if let message {
+                if let message = model.shortcutMessage {
                     Text(message)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -314,7 +357,7 @@ struct ShortcutSettings: View {
             } header: {
                 Text(L("呼出面板"))
             } footer: {
-                Text(isRecording
+                Text(model.isRecordingShortcut
                      ? L("直接按下想要的组合键，需要包含 ⌘、⌥ 或 ⌃；按 esc 取消。录制期间全局快捷键会暂时停用。")
                      : L("在其他应用里按下这个组合键即可呼出面板。点击按键可以重新录制。"))
             }
@@ -331,24 +374,24 @@ struct ShortcutSettings: View {
             }
         }
         .formStyle(.grouped)
-        .onDisappear { stopRecording() }
+        .onDisappear { model.stopShortcutRecording() }
     }
 
     /// 录制按钮：平时显示当前快捷键，录制中显示提示并高亮。
     private var recorderButton: some View {
         Button {
-            isRecording ? stopRecording() : startRecording()
+            model.isRecordingShortcut ? model.stopShortcutRecording() : startRecording()
         } label: {
-            Text(isRecording ? L("按下组合键…") : settings.hotkey.displayString)
+            Text(model.isRecordingShortcut ? L("按下组合键…") : settings.hotkey.displayString)
                 .font(.system(size: 13, weight: .semibold))
                 .frame(minWidth: 108)
                 .padding(.vertical, 3)
                 .padding(.horizontal, 10)
         }
         .buttonStyle(.bordered)
-        .tint(isRecording ? .accentColor : nil)
+        .tint(model.isRecordingShortcut ? .accentColor : nil)
         .overlay {
-            if isRecording {
+            if model.isRecordingShortcut {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(Color.accentColor, lineWidth: 2)
             }
@@ -364,36 +407,10 @@ struct ShortcutSettings: View {
     }
 
     private func startRecording() {
-        stopRecording()
-        isRecording = true
-        message = nil
-        // 录制期间先注销全局快捷键，否则按到当前组合键会被直接吞掉，录不进来
-        HotKeyCenter.shared.unregister()
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
-            if event.keyCode == 53 {
-                message = L("已取消")
-                stopRecording()
-                return nil
-            }
-            if let shortcut = Shortcut(event: event), shortcut.isValid {
-                settings.hotkey = shortcut
-                message = L("已更新为 %@", shortcut.displayString)
-                stopRecording()
-                return nil
-            }
-            message = L("这个按键不能作为全局快捷键，请加上 ⌘、⌥ 或 ⌃")
-            return nil
+        model.startShortcutRecording { shortcut in
+            // 赋值会经 `onHotKeyChange` 自动重新注册全局热键。
+            settings.hotkey = shortcut
         }
-    }
-
-    private func stopRecording() {
-        guard isRecording || monitor != nil else { return }
-        isRecording = false
-        if let monitor {
-            NSEvent.removeMonitor(monitor)
-            self.monitor = nil
-        }
-        coordinator.applyHotKey()
     }
 }
 

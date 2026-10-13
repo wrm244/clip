@@ -14,7 +14,7 @@ import SwiftUI
 /// - 最小化 / 最大化按钮变灰，窗口尺寸跟着当前分栏走。
 /// - 标题始终显示当前分栏名。
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     static let shared = SettingsWindowController()
 
     private static let frameAutosaveName = "ClipSettingsWindow.v4"
@@ -25,9 +25,10 @@ final class SettingsWindowController {
     private var window: NSWindow?
     private let model = SettingsUIModel()
 
-    private init() {}
+    private override init() { super.init() }
 
     func show(coordinator: AppCoordinator, pane: SettingsPane? = nil) {
+        model.coordinator = coordinator
         if let pane { model.pane = pane }
         let window = self.window ?? makeWindow(coordinator: coordinator)
         self.window = window
@@ -58,6 +59,9 @@ final class SettingsWindowController {
         window.titleVisibility = .hidden
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
+        // 窗口常驻（不随关闭释放），SwiftUI 视图不一定收到 onDisappear；
+        // 用 delegate 回调把快捷键录制收尾，见 windowWillClose(_:)。
+        window.delegate = self
 
         // HIG：设置窗口要把「最小化」和「最大化」按钮变灰
         window.standardWindowButton(.miniaturizeButton)?.isEnabled = false
@@ -72,6 +76,12 @@ final class SettingsWindowController {
         }
         window.setFrameAutosaveName(Self.frameAutosaveName)
         return window
+    }
+
+    /// 窗口关闭时结束快捷键录制。
+    /// 录制期间全局热键被注销，若没收尾（视图没收到 onDisappear）会永久失效。
+    func windowWillClose(_ notification: Notification) {
+        model.stopShortcutRecording()
     }
 
     /// 切换分栏只更新标题。

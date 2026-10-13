@@ -58,6 +58,16 @@ final class ImageCache {
         cache.setObject(image, forKey: key as NSString, cost: pixels * 4)
     }
 
+    /// 按 blob 文件名移除缓存条目（条目被删除 / 清理时调用）。
+    /// 缩略图和预览图都用 blob 文件名作键，所以两个缓存都要清。
+    func remove(names: [String]) {
+        for name in names {
+            let key = name as NSString
+            thumbnails.removeObject(forKey: key)
+            previews.removeObject(forKey: key)
+        }
+    }
+
     func clear() {
         thumbnails.removeAllObjects()
         previews.removeAllObjects()

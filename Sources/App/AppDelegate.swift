@@ -35,8 +35,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppCoordinator.shared.start()
     }
 
+    /// 退出前把排队中的数据库写入全部落盘。
+    ///
+    /// `ClipStore.enqueueSave` 是异步任务链，尾部若还没执行，直接退出会丢掉最后一次复制。
+    /// `applicationWillTerminate` 是同步的，塞不下 `await`，所以这里返回 `.terminateLater`，
+    /// 等 drain 完再 `reply`。
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // 先停采集，避免 drain 期间又插进新的写入。
+        AppCoordinator.shared.monitor.stop()
+        Task { @MainActor in
+            await AppCoordinator.shared.store.drainSavesForTermination()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
-        // SwiftData 每笔写操作都已显式 save()，退出时没有需要补写的数据。
+        // 正常路径已在 applicationShouldTerminate 里 drain 过；这里兜底再停一次计时器。
         AppCoordinator.shared.monitor.stop()
     }
 

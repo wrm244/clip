@@ -52,7 +52,8 @@ struct ClipProvider: TimelineProvider {
 
 struct ClipWidget: Widget {
     /// 主 App 用 `WidgetCenter.reloadTimelines(ofKind:)` 时的标识。
-    static let kind = "ClipWidget"
+    /// 常量与主 App 共用，避免两边写错导致刷新不了。
+    static let kind = WidgetFeed.widgetKind
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: Self.kind, provider: ClipProvider()) { entry in
@@ -134,7 +135,9 @@ struct ClipWidgetView: View {
     // MARK: 中 / 大尺寸：列表
 
     private var listContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // 先算一次行列表：在 ForEach 内反复求值 `prefix(rowLimit)` 既啰嗦又白算。
+        let rows = Array(entry.items.prefix(rowLimit))
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 5) {
                 Image(systemName: "clipboard")
                     .font(.system(size: 11, weight: .semibold))
@@ -149,12 +152,12 @@ struct ClipWidgetView: View {
             .padding(.bottom, 6)
 
             VStack(spacing: 0) {
-                ForEach(entry.items.prefix(rowLimit)) { item in
+                ForEach(rows) { item in
                     Link(destination: copyURL(item)) {
                         ClipWidgetRow(item: item, chinese: entry.isChinese) { thumbnail(item) }
                     }
                     .buttonStyle(.plain)
-                    if item.id != entry.items.prefix(rowLimit).last?.id {
+                    if item.id != rows.last?.id {
                         Divider().opacity(0.5)
                     }
                 }
@@ -195,13 +198,25 @@ struct ClipWidgetView: View {
         }
     }
 
+    /// 按语言缓存的相对时间格式化器。
+    /// 每行每次重绘都 new 一个 `RelativeDateTimeFormatter` 很浪费（构造成本远高于一次格式化）。
+    private static let timeFormatters = NSCache<NSString, RelativeDateTimeFormatter>()
+
     private func relativeTime(_ date: Date) -> String {
         let seconds = Date.now.timeIntervalSince(date)
         if seconds < 45 { return WidgetText.justNow(entry.isChinese) }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.locale = Locale(identifier: entry.language)
-        formatter.dateTimeStyle = .named
-        formatter.unitsStyle = .abbreviated
+        let key = entry.language as NSString
+        let formatter: RelativeDateTimeFormatter
+        if let cached = Self.timeFormatters.object(forKey: key) {
+            formatter = cached
+        } else {
+            let created = RelativeDateTimeFormatter()
+            created.locale = Locale(identifier: entry.language)
+            created.dateTimeStyle = .named
+            created.unitsStyle = .abbreviated
+            Self.timeFormatters.setObject(created, forKey: key)
+            formatter = created
+        }
         return formatter.localizedString(for: date, relativeTo: .now)
     }
 

@@ -13,8 +13,6 @@ final class ClipboardMonitor {
     private let store: ClipStore
     private let settings: ClipSettings
 
-    private(set) var isRunning = false
-
     init(store: ClipStore, settings: ClipSettings) {
         self.store = store
         self.settings = settings
@@ -34,13 +32,11 @@ final class ClipboardMonitor {
         timer.tolerance = 0.2
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
-        isRunning = true
     }
 
     func stop() {
         timer?.invalidate()
         timer = nil
-        isRunning = false
     }
 
     private func poll() {
@@ -67,7 +63,14 @@ final class ClipboardMonitor {
                 lastChangeCount = changeCount
                 deferralCount = 0
                 Log.monitor.debug("采集到 \(draft.kind.rawValue, privacy: .public) 内容，\(draft.byteCount) 字节")
-                Task { await store.ingest(draft) }
+                // 哈希是 O(内容长度) 的，放到后台算；主线程只负责把剪贴板负载拷出来
+                // （NSPasteboard 只能在主线程访问，这一步没法挪）。
+                Task {
+                    let finalized = await Task.detached(priority: .utility) {
+                        PasteboardReader.finalizeHash(draft)
+                    }.value
+                    await store.ingest(finalized)
+                }
                 return
             }
             Log.monitor.debug("剪贴板内容无法识别，已跳过")

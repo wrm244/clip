@@ -61,17 +61,28 @@ extension WidgetFeed {
     nonisolated static let fileName = "feed.json"
     nonisolated static let thumbsFolderName = "Thumbs"
 
+    /// 小组件 kind（`StaticConfiguration` 的标识）。
+    /// 主 App 刷新时间线时要用它，所以放在双方共用的文件里避免拼错。
+    nonisolated static let widgetKind = "ClipWidget"
+
     /// 真实用户 home。
     ///
     /// 沙盒进程里 `NSHomeDirectory()` / `FileManager.homeDirectoryForCurrentUser`
     /// 都会指向 `~/Library/Containers/<bundle-id>/Data`，拼不出主 App 的路径；
     /// `getpwuid` 读的是目录服务，返回的始终是真实 home（实测在沙盒内成立）。
+    ///
+    /// 结果缓存成静态常量：`getpwuid` 不可重入，且 `thumbURL` 每行都会调一次，
+    /// 不能每次都去查目录服务。
     nonisolated static func homeDirectory() -> URL {
+        cachedHome
+    }
+
+    private nonisolated static let cachedHome: URL = {
         if let entry = getpwuid(getuid()), let dir = entry.pointee.pw_dir {
             return URL(fileURLWithPath: String(cString: dir), isDirectory: true)
         }
         return FileManager.default.homeDirectoryForCurrentUser
-    }
+    }()
 
     /// 快照根目录：`~/Library/Application Support/Clip/Widget`。
     nonisolated static func directoryURL() -> URL {
