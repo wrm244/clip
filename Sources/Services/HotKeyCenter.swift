@@ -9,7 +9,6 @@ final class HotKeyCenter {
 
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
-    private(set) var registeredShortcut: Shortcut?
 
     /// 热键触发时的回调。
     var onTrigger: (() -> Void)?
@@ -52,7 +51,6 @@ final class HotKeyCenter {
             return false
         }
         hotKeyRef = reference
-        registeredShortcut = shortcut
         return true
     }
 
@@ -65,7 +63,6 @@ final class HotKeyCenter {
             RemoveEventHandler(eventHandler)
             self.eventHandler = nil
         }
-        registeredShortcut = nil
     }
 
     fileprivate func fire() {

@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Observation
-import ServiceManagement
 
 /// 用户偏好设置，直接落到 UserDefaults，改动即持久化。
 @Observable
@@ -236,23 +235,5 @@ final class ClipSettings {
         // 注意：@Observable 的属性观察器在 init 里也会触发，
         // 那时 NSApp 还没有创建，这里必须做空值保护。
         NSApp?.appearance = appearance.nsAppearance
-    }
-
-    var isLaunchAtLoginEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
-    }
-
-    /// 设置开机自启，成功返回 nil，失败返回错误描述。
-    func setLaunchAtLogin(_ enabled: Bool) -> String? {
-        do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
     }
 }

@@ -38,7 +38,6 @@ final class ClipStore {
     var selectedID: ClipItem.ID?
     var previewVisible: Bool = true
     var toast: ClipToast?
-    private(set) var isReady = false
 
     /// 历史内容或顺序变化后的回调。桌面小组件据此导出只读快照（见 `WidgetFeedWriter`）。
     /// 只关心「会影响快照」的变化，因此搜索框输入（只改 visibleItems）不触发。
@@ -105,7 +104,6 @@ final class ClipStore {
         guard let loaded = await storage.fetchAllItems() else {
             Log.store.fault("历史读取失败，本次运行以空列表运行，不执行任何清理")
             rebuildVisible()
-            isReady = true
             return
         }
         items = applyRetention(loaded)
@@ -114,7 +112,6 @@ final class ClipStore {
         detailCache = [:]
         sortItems()
         rebuildVisible()
-        isReady = true
         notifyHistoryChanged()
         // 被保留策略淘汰的条目同步从数据库删掉（固定条目永不淘汰）。
         let keptIDs = Set(items.map(\.id))
