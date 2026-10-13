@@ -54,6 +54,10 @@ final class ClipStore {
     /// 「清空全部数据」进行中。置位期间拒绝新的采集，并让在途采集在检查点退出——
     /// 否则它们会在 `eraseEverything` 清库 / 删 Blobs 之后又把条目写回来。
     private var isErasing = false
+    /// 清空操作的代数。`isErasing` 会在 erase 返回时马上清掉，而在途 `ingest` 的
+    /// 挂起点可能在那之后才恢复；只靠布尔值会漏掉这个窗口。采集在入口记下代数，
+    /// 提交前对不上就丢弃（见 `ingest`）。
+    private var eraseGeneration: UInt64 = 0
     private var toastTask: Task<Void, Never>?
     /// 搜索索引缓存：id → 小写拼接的搜索文本（含本地化类型标题）。
     ///
@@ -134,6 +138,8 @@ final class ClipStore {
         // 清空操作进行中时丢弃新内容：否则在途采集会在 `eraseEverything` 清库之后
         // 又把条目（及其已被删除的 Blob 引用）写回来。
         guard settings.isMonitoringEnabled, !isErasing else { return }
+        // 记下本次采集开始时的清空代数：期间只要清空过，后面就不再提交。
+        let generation = eraseGeneration
 
         var item = ClipItem(
             id: draft.id,
@@ -174,7 +180,7 @@ final class ClipStore {
         }
 
         // 转码 / 解析期间可能开始了「清空全部数据」：此时直接丢弃，别写库。
-        guard !isErasing else { return }
+        guard !isErasing, generation == eraseGeneration else { return }
 
         // 阶段二：先查一次重。命中就只更新用量，不用白写一遍图。
         if let duplicate = duplicateIndex(of: item) {
@@ -192,8 +198,10 @@ final class ClipStore {
             await storage.writeBlob(blob.data, named: blob.name)
         }
 
-        // 落盘期间又开始了「清空全部数据」：刚写的 Blob 已被删掉，直接放弃。
-        guard !isErasing else {
+        // 落盘期间开始过「清空全部数据」：刚写的 Blob 可能已被删掉，直接放弃。
+        // 这里必须比对代数：erase 返回时会把 isErasing 清掉，在途采集的恢复点可能落在
+        // 那之后，只看布尔值就会漏。
+        guard !isErasing, generation == eraseGeneration else {
             await storage.removeBlobs(blobWrites.map { $0.name })
             return
         }
@@ -316,6 +324,7 @@ final class ClipStore {
         // 闸门置位后：新采集会被 ingest 的 guard 丢弃，在途采集也会在各自的检查点退出，
         // 避免它们在清库 / 删 Blobs 之后又把数据写回来。
         isErasing = true
+        eraseGeneration &+= 1
         defer { isErasing = false }
         items = []
         searchIndex = [:]
