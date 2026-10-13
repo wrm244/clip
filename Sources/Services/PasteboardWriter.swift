@@ -59,6 +59,9 @@ enum PasteboardWriter {
             return true
 
         default:
+            // .file 走到这里 = ⌥↩ 纯文本：内容靠 item.text（换行拼接的路径）。
+            // 采集端保证 .file 的 text 与 filePaths 同步；这里用断言兜住回归。
+            assert(item.kind != .file || item.text != nil, ".file 条目缺少 text，与 filePaths 失去同步")
             guard let text = item.text else { return false }
             let itemBox = NSPasteboardItem()
             itemBox.setString(text, forType: .string)

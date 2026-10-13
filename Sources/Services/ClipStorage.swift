@@ -23,8 +23,10 @@ private enum ClipMigrationPlan: SchemaMigrationPlan {
 /// `ImageCache` 依赖同步读盘，保持这个行为可以把改动面降到最小。
 ///
 /// 并发模型：普通 `actor` + 懒创建 `ModelContext`。actor 方法跑在全局并发执行器上，
-/// 所以 context 落在私有串行队列，不会因为首访发生在主线程而退化成主队列
-/// （这也是不用 `@ModelActor` 的原因：它的 context 队列绑定创建线程）。
+/// 每次访问都串行执行，`ModelContext` 不会被多个线程并发使用。
+/// （`@ModelActor` 同样能提供互斥的 context 访问——它的 executor 不绑定创建线程，
+/// 旧注释说法有误；不用它只是因为它会把 context 暴露成 actor 隔离属性并生成一整套
+/// fetch/save 模板，而这里自己持有一个私有 context 更贴合现有接口形态。）
 /// 不依赖 autosave（强杀时 autosave 不落盘），每次写操作显式 `save()`。
 actor ClipStorage {
     static let shared = ClipStorage()
