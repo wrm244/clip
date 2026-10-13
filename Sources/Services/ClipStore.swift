@@ -81,7 +81,8 @@ final class ClipStore {
     @ObservationIgnored private var visibleIndexByID: [ClipItem.ID: Int] = [:]
 
     /// 单条被缓存进搜索索引的最大字节数（见 `searchHaystack(for:)`）。
-    private static let maxIndexedHaystackBytes = 16 * 1024
+    /// `nonisolated`：后台搜索重建任务也要读它。
+    nonisolated private static let maxIndexedHaystackBytes = 16 * 1024
 
     /// 搜索去抖 + 后台匹配的任务。连续输入期间前一个任务被取消。
     private var searchTask: Task<Void, Never>?
