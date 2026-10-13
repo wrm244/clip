@@ -123,10 +123,34 @@ xcodebuild -project Clip.xcodeproj -scheme Clip \
 
 `release.yml` 在构建前从 GitHub Secrets 导入证书：
 
-- `P12_BASE64`：`base64 -i "Clip Self Signed.p12" | pbcopy`
+- `P12_BASE64`：p12 的**单行** base64（见下）
 - `P12_PASSWORD`：导出 p12 时设置的密码
 
 两个 Secret 都没配时，CI 自动回退 ad-hoc 签名（仍能出包，但用户更新后要重新授权辅助功能）。
+
+> ⚠️ **p12 里必须同时有「证书」和「私钥」**。只导出私钥的 p12 里没有证书，
+> `security import` 会成功但组不出 identity，CI 会报「未找到代码签名身份」。
+> 「钥匙串访问」里要选中 **「我的证书」** 分类下、左边带小三角（可展开出私钥）的
+> `Clip Self Signed` **整条身份**再导出；只选「密钥」分类里的条目导出的就是无证书的私钥。
+
+推荐用命令行导出整条身份（会连证书一起打包），并直接生成单行 base64：
+
+```bash
+# 1) 导出身份（提示输入的「导出密码」要和第 3 步一致）
+security export -k "$HOME/Library/Keychains/login.keychain-db" -t identities \
+  -f pkcs12 -P '你的导出密码' -o /tmp/Clip-Identity.p12
+
+# 2) 自检：证书、私钥都应各打印 1
+openssl pkcs12 -in /tmp/Clip-Identity.p12 -nokeys  -passin 'pass:你的导出密码' | grep -c 'BEGIN CERTIFICATE'
+openssl pkcs12 -in /tmp/Clip-Identity.p12 -nocerts -nodes -passin 'pass:你的导出密码' | grep -c 'BEGIN.*PRIVATE KEY'
+
+# 3) 生成单行 base64 → 剪贴板 → 粘贴进 P12_BASE64
+base64 -i /tmp/Clip-Identity.p12 | tr -d '\n' | pbcopy
+```
+
+> `security export -t identities` 会把钥匙串里**所有**身份都导出；本机只有 `Clip Self Signed` 一条。
+> 若有多条，改用「钥匙串访问」只导出指定那一条。仓库根目录那个 `Clip Self Signed.p12`
+> 就是只含私钥的坏样本，别再拿它做 Secret（已在 `.gitignore` 忽略）。
 
 ### 打包 DMG
 

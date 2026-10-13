@@ -52,13 +52,15 @@ jobs:
         id: signing
         env:
           # 仓库 Settings → Secrets 里配置：
-          #   P12_BASE64   = 自签名证书 p12 的 base64（base64 -i "Clip Self Signed.p12" | pbcopy）
+          #   P12_BASE64   = 含「证书+私钥」的 p12 的单行 base64（base64 -i Clip-Identity.p12 | tr -d '\n' | pbcopy）
           #   P12_PASSWORD = 导出 p12 时设的密码
           P12_BASE64: ${{ secrets.P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
         run: |
+          set -euo pipefail
+
           # 没配证书 Secret 就回退 ad-hoc：能正常构建发布，但辅助功能授权每次更新会重置。
-          if [ -z "$P12_BASE64" ]; then
+          if [ -z "${P12_BASE64:-}" ]; then
             echo "::warning::未配置 P12_BASE64，本次使用 ad-hoc 签名（辅助功能授权会在更新后失效）"
             echo "identity=-" >> "$GITHUB_OUTPUT"
             exit 0
@@ -69,24 +71,48 @@ jobs:
           security set-keychain-settings -lut 3600 "$KEYCHAIN"
           security unlock-keychain -p "" "$KEYCHAIN"
 
-          # openssl 解码，避免 macOS / GNU base64 参数差异。
-          echo "$P12_BASE64" | openssl base64 -d -A -out "$RUNNER_TEMP/cert.p12"
+          # openssl 解码，避免 macOS / GNU base64 参数差异；-A 要求输入是单行。
+          printf '%s' "$P12_BASE64" | openssl base64 -d -A -out "$RUNNER_TEMP/cert.p12" 2>/dev/null || true
+          if [ ! -s "$RUNNER_TEMP/cert.p12" ]; then
+            echo "::error::P12_BASE64 解码后为空。请确认 Secret 是单行 base64：base64 -i x.p12 | tr -d '\\n' | pbcopy"
+            exit 1
+          fi
+
+          # 导入前粗检 p12 结构：坏证书早报错，并给出可操作的指引。
+          P12_HEX="$(xxd -p "$RUNNER_TEMP/cert.p12" | tr -d '\n')"
+          if ! grep -q '2a864886f70d010c0a0102' <<<"$P12_HEX"; then
+            echo "::error::p12 中不含私钥（pkcs8ShroudedKeyBag），无法用于签名。请重新导出整条身份。"
+            exit 1
+          fi
+          # 证书可能是明文 certBag（…0a0103），也可能被 RC2 整体加密（…010c0106）；有其一即视为含证书。
+          if ! grep -q '2a864886f70d010c0a0103' <<<"$P12_HEX" && ! grep -q '2a864886f70d010c0106' <<<"$P12_HEX"; then
+            echo "::error::p12 只含私钥、不含证书，导入后组不出签名身份。请在「钥匙串访问」的『我的证书』里选中带私钥的 Clip Self Signed 整条身份导出（不要只选『密钥』分类下的条目）。"
+            exit 1
+          fi
+
           security import "$RUNNER_TEMP/cert.p12" \
+            -f pkcs12 \
             -k "$KEYCHAIN" \
             -P "$P12_PASSWORD" \
             -T /usr/bin/codesign \
             -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN"
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
-          rm -f "$RUNNER_TEMP/cert.p12"
 
           # 自签名证书在 runner 上不受信任，find-identity -v 会把它过滤掉，所以不加 -v。
-          IDENTITY=$(security find-identity -p codesigning "$KEYCHAIN" \
-            | sed -n 's/^ *[0-9]*) [0-9A-F]* "\(.*\)".*/\1/p' | head -1)
+          # 不用 head 提前关闭管道，避免 pipefail 下上游收到 SIGPIPE 而误判失败。
+          IDENTITIES="$(security find-identity -p codesigning "$KEYCHAIN" \
+            | sed -n 's/^ *[0-9]*) [0-9A-F]* "\(.*\)".*/\1/p')"
+          IDENTITY="${IDENTITIES%%$'\n'*}"
           if [ -z "$IDENTITY" ]; then
-            echo "::error::p12 已导入但未找到代码签名身份，请确认导出的是「代码签名」证书"
+            echo "::group::签名调试信息"
+            security find-identity -p codesigning -v "$KEYCHAIN" || true
+            security dump-keychain "$KEYCHAIN" | head -40 || true
+            echo "::endgroup::"
+            echo "::error::p12 已导入但未找到代码签名身份，请确认导出的是包含证书与私钥的「代码签名」身份。"
             exit 1
           fi
+          rm -f "$RUNNER_TEMP/cert.p12"
           echo "使用签名身份：$IDENTITY"
           echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
 
@@ -145,7 +171,7 @@ jobs:
 
           ## 首次打开
 
-          本构建使用 ad-hoc 签名（未购买开发者证书），系统会提示「无法验证开发者」。
+          本构建未使用 Apple 开发者证书（自签名 / ad-hoc），系统会提示「无法验证开发者」。
           解决办法（任选其一）：
 
           - 在「应用程序」里 **右键 → 打开**，再点「打开」；
