@@ -110,6 +110,9 @@ final class MenuBarPanelController: NSObject, @MainActor NSStatusItemExpandedInt
 
     private func show() {
         guard !isShown, let coordinator else { return }
+        // 快速面板的图片放大浮层如果还开着，先收掉：两个浮层叠在屏幕上没有意义，
+        // 而且点它会命中下面对「别处点击」的判定，把刚展开的菜单栏会话误关掉。
+        coordinator.lightbox.dismiss()
         let panel = ensurePanel(coordinator: coordinator)
         panel.appearance = coordinator.settings.appearance.nsAppearance
         // 记下当前最前的“别的 App”，面板里的粘贴要把焦点还回去。

@@ -7,7 +7,7 @@ struct PreviewPane: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let item: ClipItem?
 
-    /// 图片预览的悬停态：出现「可预览」角标和更亮的描边。
+    /// 图片预览的悬停态：出现「可放大」角标和更亮的描边。
     @State private var imageHovering = false
 
     var body: some View {
@@ -115,9 +115,9 @@ struct PreviewPane: View {
     private func imageDetail(for item: ClipItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if let image = ImageCache.shared.preview(for: item) {
-                // 整张图就是一个按钮：点一下用系统 Quick Look 打开（自带 Live Text，可选中 / 复制图中文字）。
+                // 整张图就是一个按钮：点一下弹出放大浮层（ImageLightboxController）。
                 Button {
-                    coordinator.quickLook.present(item)
+                    coordinator.lightbox.show(item)
                 } label: {
                     Image(nsImage: image)
                         .resizable()
@@ -134,8 +134,8 @@ struct PreviewPane: View {
                 .focusEffectDisabled()
                 .onHover { imageHovering = $0 }
                 .animation(reduceMotion ? nil : .smooth(duration: 0.15), value: imageHovering)
-                .help(L("点击预览"))
-                .accessibilityLabel(L("预览图片"))
+                .help(L("点击放大查看"))
+                .accessibilityLabel(L("放大查看图片"))
             }
             metaRow(L("尺寸"), "\(item.pixelWidth ?? 0) × \(item.pixelHeight ?? 0)")
             metaRow(L("体积"), ClipItem.byteText(item.byteCount))
@@ -146,7 +146,7 @@ struct PreviewPane: View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
     }
 
-    /// 悬停时右下角出现的「可预览」角标。不参与命中测试，点击穿透到整张图。
+    /// 悬停时右下角出现的「可放大」角标。不参与命中测试，点击穿透到整张图。
     private var zoomBadge: some View {
         Image(systemName: "arrow.up.left.and.arrow.down.right")
             .font(.system(size: 9, weight: .semibold))

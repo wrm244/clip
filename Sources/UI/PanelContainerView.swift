@@ -12,7 +12,10 @@ import AppKit
 /// 屏幕上看起来就是「圆角外面多出来一个方形边框」。
 /// 容器按原生圆角把四角裁掉之后就没有了；
 /// 同时窗口的 alpha 变成干净的圆角矩形，AppKit 的窗口阴影也能跟随这个形状。
-final class PanelContainerView: NSView {
+///
+/// 不做 final：图片放大浮层用它的子类 LightboxContentView 继承同一套形状处理，
+/// 在那之上再加「整块浮层都是关闭热区」的命中逻辑。
+class PanelContainerView: NSView {
 
     /// 面板圆角半径。改动后重新向系统解析一次。
     var cornerRadius: CGFloat = PanelMetrics.cornerRadius {
