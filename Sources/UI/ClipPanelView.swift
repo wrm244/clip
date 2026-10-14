@@ -244,9 +244,10 @@ struct ClipPanelView: View {
             KeyHint(keys: "↵", label: L("粘贴"))
             if isCompact {
                 KeyHint(keys: "esc", label: L("关闭"))
+                KeyHint(keys: "→", label: L("展开预览"))
             } else {
                 KeyHint(keys: "⌥↵", label: L("纯文本"))
-                KeyHint(keys: "→", label: L("预览"))
+                KeyHint(keys: "→", label: L("展开预览"))
                 KeyHint(keys: "⌘P", label: L("固定"))
                 KeyHint(keys: "⌘⌫", label: L("删除"))
             }

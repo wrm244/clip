@@ -34,6 +34,17 @@ final class PanelController {
         panel?.appearance = coordinator?.settings.appearance.nsAppearance
     }
 
+    /// 面板当前所在的屏幕。图片放大浮层要落在跟面板同一块屏上，
+    /// 多显示器下不给它屏幕，系统可能把大图弹到另一块屏上。
+    var currentScreen: NSScreen? { panel?.screen }
+
+    /// 放大浮层等临时窗口关闭后，把键盘焦点还给面板。
+    /// 浮层是独立窗口，它一关按键就没人接了；还回来用户才能直接继续 ↑↓ / ↵ / esc。
+    func restoreKeyFocus() {
+        guard isVisible, let panel, !panel.isKeyWindow else { return }
+        panel.makeKey()
+    }
+
     func toggle() {
         isVisible ? hide() : show()
     }
@@ -50,6 +61,8 @@ final class PanelController {
 
     func show() {
         guard let coordinator else { return }
+        // 重新呼出时不该再挂着上一轮的放大浮层（`clip://show` 在面板已可见时也会走到这里）。
+        coordinator.lightbox.dismiss()
         let panel = ensurePanel(coordinator: coordinator)
         syncAppearance()
         rememberFrontmostApp()
@@ -87,6 +100,9 @@ final class PanelController {
                 app.activate()
             }
         }
+        // 面板收起后放大浮层没有存在的理由，一起收掉，别留一个孤儿窗口悬在屏幕上。
+        // 放在 isVisible 置 false 之后：dismiss 里的「焦点还给面板」会自然跳过。
+        coordinator?.lightbox.dismiss()
     }
 
     // MARK: 窗口搭建
@@ -258,6 +274,11 @@ final class PanelController {
             guard let self, event.window === self.panel else { return event }
             if event.type == .leftMouseDown {
                 self.updateDragPolicy(at: event.locationInWindow)
+                // 面板里的任何点击都意味着注意力回到了列表：顺手收起放大浮层，
+                // 否则它会继续悬在屏幕上展示一张马上要被换掉的图。
+                // 走 dismissByClick：双击图片时第二次点击可能落在面板露出来的角落上，
+                // 不该被当成"关掉刚打开的大图"（见 ImageLightboxController）。
+                self.coordinator?.lightbox.dismissByClick()
                 return event
             }
             return self.handle(event) ? nil : event
@@ -321,7 +342,14 @@ final class PanelController {
         if !command, !option {
             switch event.keyCode {
             case 53: // ⎋
-                hide()
+                // 放大浮层开着时，esc 先收浮层、面板留着。
+                // （浮层拿到 key 时 esc 由它自己的监视器消化，走不到这里；
+                //   这里是浮层没抢到 key 的兜底路径。）
+                if coordinator.lightbox.isVisible {
+                    coordinator.lightbox.dismiss()
+                } else {
+                    hide()
+                }
                 return true
             case 125: // ↓
                 coordinator.store.moveSelection(by: 1)

@@ -162,6 +162,7 @@ enum LocalizationEnglish {
         "关闭": "Close",
         "纯文本": "Plain text",
         "预览": "Preview",
+        "展开预览": "Show preview",
         "切换预览面板 ⌘Y": "Toggle preview pane ⌘Y",
 
         // MARK: 条目右键菜单 / 预览
@@ -178,6 +179,9 @@ enum LocalizationEnglish {
         "体积": "Size",
         "在浏览器中打开": "Open in Browser",
         "文本较长，仅预览前 %ld 个字符": "Long text — previewing the first %ld characters only",
+        "点击放大查看": "Click to enlarge",
+        "放大查看图片": "Enlarge image",
+        "点击或按 esc 关闭": "Click or press esc to close",
 
         // MARK: 菜单栏面板
         "%ld 条历史 · %@ 呼出": "%ld items · open with %@",
