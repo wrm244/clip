@@ -21,8 +21,9 @@ private nonisolated final class ClipPreviewItem: NSObject, QLPreviewItem {
 /// 后者在我们这种无边框非激活面板里不会沿响应链接管 dataSource，预览会停在
 /// "No items selected" 且关不掉。
 ///
-/// `QLPreviewPanel` 沿响应链找 controller，所以 `ClipPanel` 里有一份转交
-/// （见 `PanelController` 的 `ClipPanel` 覆写）。
+/// `QLPreviewPanel` 沿响应链找 controller（window / AppDelegate 各有一份转交，
+/// 见 `PanelController` 与 `AppDelegate`）；它的控制权会在两者之间“移交”，
+/// 所以本类里的 `present` / `endControl` 都刻意避开在移交过程中动 dataSource。
 @MainActor
 final class QuickLookPresenter: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
     private weak var coordinator: AppCoordinator?
@@ -48,25 +49,22 @@ final class QuickLookPresenter: NSObject, QLPreviewPanelDataSource, QLPreviewPan
         guard let item, let previewItem = previewItem(for: item),
               let panel = QLPreviewPanel.shared() else { return }
         previewItems = [previewItem]
-
-        // 直接挂上 dataSource / delegate，不单纯依赖响应链时序：
-        // QLPreviewPanel 只在 main/key window 变化时才沿响应链找 controller，
-        // 时序不对（例如面板不在最前、或 key 窗口没变）时 beginControl 不会回调，
-        // 预览就会停在 "No items selected" 且关不掉。
         wantsControl = true
-        if panel.dataSource == nil || panel.dataSource !== self {
-            panel.dataSource = self
-        }
-        if panel.delegate == nil || panel.delegate !== self {
-            panel.delegate = self
-        }
-        panel.reloadData()
 
-        guard !isVisible else { return }
-        // 再走一遍官方路径：沿响应链确认 controller（能成则 endControl 也接得上）。
-        panel.updateController()
-        panel.makeKeyAndOrderFront(nil)
-        installMonitor()
+        // 先把面板显示出来，再挂 dataSource：
+        // QLPreviewPanel 会在 key window 变化时沿响应链重找 controller，期间会调用
+        // endControl/beginControl 做“移交”。如果在显示之前就把自己设成 dataSource，
+        // 移交时触发的 endControl 会把内容清掉，预览就变成 "No items selected"。
+        if !isVisible {
+            panel.makeKeyAndOrderFront(nil)
+            installMonitor()
+        }
+        // 显示以后再显式挂上：无论响应链有没有回调 beginControl（面板不是 key
+        // window 时就不会），内容都在。
+        if panel.dataSource !== self { panel.dataSource = self }
+        if panel.delegate !== self { panel.delegate = self }
+        panel.reloadData()
+        panel.currentPreviewItemIndex = 0
     }
 
     /// 关闭预览，不抢焦点（收起呼出面板时用它）。
@@ -94,15 +92,20 @@ final class QuickLookPresenter: NSObject, QLPreviewPanelDataSource, QLPreviewPan
     }
 
     /// 交还控制权。
+    ///
+    /// 注意：控制权会在窗口 ↔ AppDelegate 之间“移交”，中途会调 endControl。
+    /// 移交时面板仍在屏幕上，**绝不能在这里清 previewItems / 拆 dataSource**，
+    /// 否则紧接着的 beginControl 拿到空数据就是 "No items selected"。
+    /// 只有面板真的收起（isVisible == false）才做收尾。
     func endControl(_ panel: QLPreviewPanel) {
+        guard !panel.isVisible else { return }
         if panel.dataSource === self { panel.dataSource = nil }
         if panel.delegate === self { panel.delegate = nil }
         // 用户点了 QL 面板自带的关闭按钮（不走 esc / 空格那条路径）时收尾。
-        // 前提：dismiss() 会先把 wantsControl 置 false；面板确实已经收起（避免只是失焦时误清）。
-        guard wantsControl, !panel.isVisible else { return }
+        // dismiss() 会先把 wantsControl 置 false，那种情况不用重复收。
+        guard wantsControl else { return }
         wantsControl = false
         removeMonitor()
-        previewItems = []
         coordinator?.panel.refocus()
     }
 
@@ -149,10 +152,10 @@ final class QuickLookPresenter: NSObject, QLPreviewPanelDataSource, QLPreviewPan
     // MARK: - QLPreviewPanelDataSource
 
     func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
-        previewItems.count
+        return previewItems.count
     }
 
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
-        previewItems[index]
+        return previewItems.indices.contains(index) ? previewItems[index] : nil
     }
 }
