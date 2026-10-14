@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import QuickLookUI
 
 /// AppKit 生命周期与主菜单。应用以菜单栏代理（LSUIElement）方式运行。
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -59,6 +60,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         true
+    }
+
+    // MARK: Quick Look 接管
+
+    // QLPreviewPanel 只在 main/key window 变化时沿响应链找 controller。
+    // 呼出面板是 .nonactivatingPanel、canBecomeMain = false，当 App 未激活 / 面板不是
+    // key window 时，窗口不在链上，beginControl 不会回调，QL 面板就会停在
+    // "No items selected" 且关不掉。AppDelegate 在响应链末端，挂在这里就总能兜住。
+
+    nonisolated override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        MainActor.assumeIsolated { AppCoordinator.shared.quickLook.wantsControl }
+    }
+
+    nonisolated override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { AppCoordinator.shared.quickLook.beginControl(panel) }
+    }
+
+    nonisolated override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { AppCoordinator.shared.quickLook.endControl(panel) }
     }
 
     // MARK: URL Scheme（clip://show / clip://copy/<id> / clip://menu / clip://settings）

@@ -48,13 +48,23 @@ final class QuickLookPresenter: NSObject, QLPreviewPanelDataSource, QLPreviewPan
         guard let item, let previewItem = previewItem(for: item),
               let panel = QLPreviewPanel.shared() else { return }
         previewItems = [previewItem]
-        if isVisible {
-            panel.reloadData()
-            return
-        }
-        // 先表态愿意接管，再 makeKeyAndOrderFront：面板由此沿响应链找到 ClipPanel，
-        // 进而回调 beginControl 把 dataSource / delegate 挂上（否则显示 No items selected）。
+
+        // 直接挂上 dataSource / delegate，不单纯依赖响应链时序：
+        // QLPreviewPanel 只在 main/key window 变化时才沿响应链找 controller，
+        // 时序不对（例如面板不在最前、或 key 窗口没变）时 beginControl 不会回调，
+        // 预览就会停在 "No items selected" 且关不掉。
         wantsControl = true
+        if panel.dataSource == nil || panel.dataSource !== self {
+            panel.dataSource = self
+        }
+        if panel.delegate == nil || panel.delegate !== self {
+            panel.delegate = self
+        }
+        panel.reloadData()
+
+        guard !isVisible else { return }
+        // 再走一遍官方路径：沿响应链确认 controller（能成则 endControl 也接得上）。
+        panel.updateController()
         panel.makeKeyAndOrderFront(nil)
         installMonitor()
     }
