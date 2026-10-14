@@ -4,6 +4,13 @@
   <p><b>macOS 剪贴板历史管理器</b><br>按一下快捷键，历史就在手边。</p>
 </div>
 
+<p align="center">
+  <b>简体中文</b> ·
+  <a href="README_en.md">English</a> ·
+  <a href="README_ja.md">日本語</a> ·
+  <a href="README_fr.md">Français</a>
+</p>
+
 <div align="center">
   <img src="Docs/img/剪切板1.png" width="820" alt="Clip 面板展开预览">
 </div>
@@ -226,6 +233,14 @@ Scripts/                    make-dmg.sh、seed-clipboard.swift
 swiftc -O Scripts/seed-clipboard.swift -o /tmp/clipseed
 /tmp/clipseed run Scripts/seed-content.sample.json 1100
 ```
+
+### 已知限制
+
+- 「登录时启动」用 `SMAppService.mainApp`，应用不在 `/Applications` 下时可能失败，设置界面会显示错误
+- 图片默认上限 8MB（超限自动降采样），条目默认上限 300 条，置顶条目永不淘汰
+- 桌面小组件通过 `temporary-exception.files.home-relative-path.read-only` 读主 App 的快照目录 —— 这是无 App Group 构建下唯一可行的共享通道。若要上架 Mac App Store，应改用 App Group + 正式签名
+- 小组件快照包含最近 12 条历史的标题文字（目前无法关闭）
+- 用自签名证书签名；上架或公证分发需换成 Developer ID 证书
 
 </details>
 
