@@ -1,5 +1,4 @@
 import AppKit
-import QuickLook
 import SwiftUI
 
 /// 面板右侧的预览窗格。
@@ -8,10 +7,8 @@ struct PreviewPane: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let item: ClipItem?
 
-    /// 图片预览的悬停态：出现「可放大」角标和更亮的描边。
+    /// 图片预览的悬停态：出现「可预览」角标和更亮的描边。
     @State private var imageHovering = false
-    /// 当前交给系统 Quick Look 预览的文件；nil = 没有预览。
-    @State private var quickLookURL: URL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -35,15 +32,9 @@ struct PreviewPane: View {
         }
         .frame(width: PanelMetrics.previewWidth)
         .frame(maxHeight: .infinity)
-        // 点图片 → 交给系统 Quick Look（自带 Live Text 选字、缩放、⌘C）。
-        .quickLookPreview($quickLookURL)
         // 悬停态挂在 PreviewPane 上，切换条目不会重建它；不重置的话新图会带着上一张的
         // 角标 / 高亮描边，直到鼠标移出再进入。
         .onChange(of: item?.id) { _, _ in imageHovering = false }
-        // Quick Look 面板是独立窗口，不会随面板 orderOut 自动关；面板收起时主动清掉绑定。
-        .onChange(of: coordinator.panel.isVisible) { _, visible in
-            if !visible { quickLookURL = nil }
-        }
     }
 
     private var separator: some View { ClipSeparator() }
@@ -126,7 +117,7 @@ struct PreviewPane: View {
             if let image = ImageCache.shared.preview(for: item) {
                 // 整张图就是一个按钮：点一下用系统 Quick Look 打开（自带 Live Text，可选中 / 复制图中文字）。
                 Button {
-                    quickLookURL = quickLookFileURL(for: item)
+                    coordinator.quickLook.present(item)
                 } label: {
                     Image(nsImage: image)
                         .resizable()
@@ -155,16 +146,7 @@ struct PreviewPane: View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
     }
 
-    /// 点击图片时交给系统 Quick Look 的文件 URL。
-    ///
-    /// 用磁盘上的原图 blob（不是内存里的缩略图），Quick Look 才能用上 Live Text 等系统能力。
-    private func quickLookFileURL(for item: ClipItem) -> URL? {
-        guard let blob = item.imageBlob else { return nil }
-        let url = ClipStorage.shared.blobURL(named: blob)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
-    }
-
-    /// 悬停时右下角出现的「可放大」角标。不参与命中测试，点击穿透到整张图。
+    /// 悬停时右下角出现的「可预览」角标。不参与命中测试，点击穿透到整张图。
     private var zoomBadge: some View {
         Image(systemName: "arrow.up.left.and.arrow.down.right")
             .font(.system(size: 9, weight: .semibold))

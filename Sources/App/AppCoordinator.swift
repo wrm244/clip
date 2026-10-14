@@ -14,6 +14,8 @@ final class AppCoordinator {
     let paste: PasteService
     let panel: PanelController
     let menuBar: MenuBarPanelController
+    /// 系统 Quick Look 预览（点击预览面板里的图片触发）。
+    let quickLook: QuickLookPresenter
 
     private init() {
         let settings = ClipSettings()
@@ -24,6 +26,7 @@ final class AppCoordinator {
         self.paste = PasteService()
         self.panel = PanelController()
         self.menuBar = MenuBarPanelController()
+        self.quickLook = QuickLookPresenter()
     }
 
     // MARK: 启动
@@ -48,6 +51,7 @@ final class AppCoordinator {
         }
         panel.attach(coordinator: self)
         menuBar.attach(coordinator: self)
+        quickLook.attach(coordinator: self)
         menuBar.install()
         // 历史变化后导出桌面小组件快照（写入防抖、语言跟随界面设置）。
         store.onHistoryChange = { items in

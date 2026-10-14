@@ -1,12 +1,27 @@
 import AppKit
 import Observation
 import QuartzCore
+import QuickLookUI
 import SwiftUI
 
 /// 无边框、可成为 key window 的浮层窗口。
 final class ClipPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    // Quick Look 面板沿响应链找 controller（见 QLPreviewPanel.h），窗口本身就在链上，
+    // 在这里接下请求再转交给 QuickLookPresenter。必须写在类体里，Swift 不允许在 extension 里 override。
+    nonisolated override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        MainActor.assumeIsolated { AppCoordinator.shared.quickLook.wantsControl }
+    }
+
+    nonisolated override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { AppCoordinator.shared.quickLook.beginControl(panel) }
+    }
+
+    nonisolated override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { AppCoordinator.shared.quickLook.endControl(panel) }
+    }
 }
 
 /// 管理快速呼出面板的显示、定位与键盘交互。
@@ -32,6 +47,13 @@ final class PanelController {
     /// 不钉住就可能和 SwiftUI 那套环境色对不上。
     func syncAppearance() {
         panel?.appearance = coordinator?.settings.appearance.nsAppearance
+    }
+
+    /// 让呼出面板重新成为 key window。
+    /// 给 Quick Look 关闭后用：QL 面板是独立的 key window，关掉后焦点要还回来。
+    func refocus() {
+        guard isVisible, let panel else { return }
+        panel.makeKeyAndOrderFront(nil)
     }
 
     func toggle() {
@@ -87,6 +109,9 @@ final class PanelController {
                 app.activate()
             }
         }
+        // 面板收起后 Quick Look 没有存在的理由，一起收掉，别留一个孤儿窗口悬在屏幕上。
+        // 放在 isVisible 置 false 之后：endControl 里的「焦点还给面板」会自然跳过。
+        coordinator?.quickLook.dismiss()
     }
 
     // MARK: 窗口搭建
