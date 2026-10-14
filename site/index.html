@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clip — macOS 剪贴板历史管理器</title>
+<meta name="description" content="Clip 是一款常驻菜单栏的 macOS 剪贴板历史管理器。按一下 ⇧⌘V，复制过的一切就在手边，回车即粘。开源、零依赖、数据只在本机。">
+<link rel="icon" type="image/png" href="assets/img/icon.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<!-- ============ 顶部导航 ============ -->
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="#top">
+      <img src="assets/img/icon.png" alt="Clip 图标" width="30" height="30">
+      <span>Clip</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features" data-i18n="nav.features">功能特性</a>
+      <a href="#showcase" data-i18n="nav.showcase">截图</a>
+      <a href="#download" data-i18n="nav.download">下载安装</a>
+      <a href="#privacy" data-i18n="nav.privacy">隐私</a>
+      <a href="#opensource" data-i18n="nav.opensource">开源</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" id="lang-toggle" type="button" aria-label="切换语言 / Switch language">
+        <span id="lang-label">EN</span>
+      </button>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="切换深浅色 / Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 14.2A8.3 8.3 0 0 1 9.8 3.4a8.3 8.3 0 1 0 10.8 10.8z"/></svg>
+      </button>
+      <a class="icon-btn" href="https://github.com/wrm244/clip" target="_blank" rel="noopener" aria-label="GitHub 仓库">
+        <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ============ Hero ============ -->
+<section class="hero">
+  <div class="hero-bg" aria-hidden="true"></div>
+  <div class="wrap hero-grid">
+    <div class="hero-copy reveal">
+      <div class="badges">
+        <span class="badge badge-version"><span class="dot"></span><span data-i18n="hero.badgeLatest">最新版 v1.0.8</span></span>
+        <span class="badge" data-i18n="hero.badgeOS">macOS 27 或更高</span>
+        <span class="badge">MIT</span>
+      </div>
+      <h1 data-i18n-html="hero.title">按一下快捷键，<br>历史就在手边。</h1>
+      <p class="lead" data-i18n-html="hero.sub">Clip 是一款常驻 macOS 菜单栏的剪贴板历史管理器。复制过的一切——文本、链接、色值、代码、图片——都安静地记着。<kbd>⇧⌘V</kbd> 随叫随到，回车即粘。</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/wrm244/clip/releases/download/v1.0.8/Clip-1.0.8.dmg">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11M7 10l5 5 5-5M4.5 20.5h15"/></svg>
+          <span data-i18n="hero.ctaDownload">下载 Clip for macOS</span>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/wrm244/clip" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span data-i18n="hero.ctaGithub">GitHub 仓库</span>
+        </a>
+      </div>
+      <p class="cta-meta" data-i18n="hero.ctaMeta">Clip-1.0.8.dmg · 806 KB · 零第三方依赖 · 数据只在本机</p>
+    </div>
+
+    <div class="hero-visual reveal" aria-hidden="true">
+      <div class="hero-glow"></div>
+      <div class="app-icon-wrap">
+        <img class="app-icon" src="assets/img/icon.png" alt="Clip 应用图标" width="200" height="200">
+        <div class="float-chip chip-key"><kbd>⇧</kbd><kbd>⌘</kbd><kbd>V</kbd></div>
+        <div class="float-chip chip-pill pill-text"><span data-i18n="chip.text">文本</span></div>
+        <div class="float-chip chip-pill pill-img"><span data-i18n="chip.image">图片</span></div>
+        <div class="float-chip chip-pill pill-link"><span data-i18n="chip.link">链接</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap hero-shot reveal">
+    <div class="shot-frame">
+      <img src="assets/img/剪切板1.png" alt="Clip 面板展开预览" loading="lazy">
+    </div>
+    <p class="shot-caption" data-i18n="hero.shotCaption">主面板：分类筛选、实时计数、来源标注，向右展开预览</p>
+  </div>
+</section>
+
+<!-- ============ 痛点引入 ============ -->
+<section class="intro">
+  <div class="wrap intro-inner reveal">
+    <p class="intro-quote" data-i18n="intro.q1">「你复制了一段代码，切去查文档；回头再要用，剪贴板已经被新内容覆盖了。」</p>
+    <p class="intro-text" data-i18n="intro.a1">Clip 在后台安静地记下你复制过的一切。没有窗口常驻，没有标签页，不用先想「我要找什么」——历史就摊在你面前，翻一下就行。</p>
+  </div>
+</section>
+
+<!-- ============ 功能特性 ============ -->
+<section class="section" id="features">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow" data-i18n="features.eyebrow">核心能力</p>
+      <h2 data-i18n="features.title">一个快捷键，管好复制过的一切</h2>
+      <p class="section-lead" data-i18n="features.lead">从呼出、选择到粘贴，全流程键盘完成；细节处也都替你想到了。</p>
+    </div>
+
+    <div class="grid grid-3">
+      <article class="card reveal">
+        <div class="card-icon icon-blue">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5z"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>
+        </div>
+        <h3 data-i18n="f1.title">什么都记得</h3>
+        <p data-i18n="f1.desc">文本、链接、颜色值、代码、文件路径、图片，复制什么记什么，每条都标着来自哪个应用。截图、设计稿、复制的色值，各自归位不打架。</p>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon icon-blue">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5 19 12l-6.5 1.5L10 20z"/></svg>
+        </div>
+        <h3 data-i18n="f2.title">呼出即用</h3>
+        <p data-i18n="f2.desc">贴着光标弹出，鼠标在哪就在哪出现；屏幕放不下时自动翻到另一侧。高度固定，条目再多也只在列表内部滚动——呼出的瞬间窗口不会上下跳。</p>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon icon-blue">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M7 12l3 3 7-7"/></svg>
+        </div>
+        <h3 data-i18n="f3.title">回车即粘</h3>
+        <p data-i18n-html="f3.desc">选中一条按回车，直接送到当前光标处，不用手动切回上一个应用。<kbd>⌥↵</kbd> 还能以纯文本粘贴，不带格式。</p>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon icon-blue">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/></svg>
+        </div>
+        <h3 data-i18n="f4.title">看得清再决定</h3>
+        <p data-i18n-html="f4.desc">选中一条按 <kbd>→</kbd> 向右展开预览，左上角固定不动，正在看的列表不会横向跳动。图片点一下放大到屏幕尺寸比对，任意处或 <kbd>esc</kbd> 收起。</p>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon icon-blue">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.5" width="18" height="4" rx="1.4"/><path d="M6 10.5h12M6 14.5h12M6 18.5h8"/></svg>
+        </div>
+        <h3 data-i18n="f5.title">菜单栏里也能点</h3>
+        <p data-i18n="f5.desc">不方便用快捷键时，点状态栏图标也行：开关记录、看最近几条、直接从菜单栏粘贴。</p>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon icon-blue">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="7.5" height="7.5" rx="1.6"/><rect x="12.5" y="4" width="7.5" height="7.5" rx="1.6"/><rect x="4" y="12.5" width="7.5" height="7.5" rx="1.6"/><rect x="12.5" y="12.5" width="7.5" height="7.5" rx="1.6"/></svg>
+        </div>
+        <h3 data-i18n="f6.title">桌面上也放一块</h3>
+        <p data-i18n="f6.desc">通知中心 / 桌面小组件显示最近几条历史，点一下即复制，点空白处呼出完整面板。</p>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon icon-blue">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.4-4.4"/></svg>
+        </div>
+        <h3 data-i18n="f7.title">找到你要的那一条</h3>
+        <p data-i18n-html="f7.desc">顶部搜索框实时过滤。<kbd>⌘P</kbd> 固定过的条目永远不会被自动清理，参数、地址、常备片段这类东西可以一直留在手边。</p>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon icon-blue">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 5 6v5.5c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z"/><path d="M9.3 12l2 2 3.4-3.6"/></svg>
+        </div>
+        <h3 data-i18n="f8.title">隐私是默认项</h3>
+        <p data-i18n="f8.desc">密码管理器标记为机密的剪贴板内容默认不记录，不记录自己回填的内容，可随时暂停记录——数据只在你本机。</p>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-icon icon-blue">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5"/><path d="M12 7.5V12l3 2"/></svg>
+        </div>
+        <h3 data-i18n="f9.title">设置立即生效</h3>
+        <p data-i18n="f9.desc">语言、深浅色、列表密度、保留条数与时长、呼出方式，所有改动立即生效，没有「应用」按钮，不需要重启。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 快捷键 ============ -->
+<section class="section section-tint" id="shortcuts">
+  <div class="wrap">
+    <div class="shortcuts-grid">
+      <div class="reveal">
+        <p class="eyebrow" data-i18n="keys.eyebrow">全键盘操作</p>
+        <h2 data-i18n="keys.title">手不用离开键盘</h2>
+        <p class="section-lead" data-i18n="keys.lead">从呼出、选择到粘贴，全流程键盘完成。呼出键可改成任意组合键，速查面板就在设置里。</p>
+        <div class="keys-demo" aria-hidden="true">
+          <div class="keys-bar">
+            <kbd>↩</kbd><span data-i18n="keys.demoPaste">粘贴</span>
+            <span class="keys-sep"></span>
+            <kbd>esc</kbd><span data-i18n="keys.demoClose">关闭</span>
+            <span class="keys-sep"></span>
+            <kbd>→</kbd><span data-i18n="keys.demoPreview">展开预览</span>
+          </div>
+        </div>
+      </div>
+      <div class="table-card reveal">
+        <table class="keys-table">
+          <tbody>
+            <tr><td><kbd>⇧⌘V</kbd></td><td data-i18n="k1">呼出 / 收起（可改成任意组合键）</td></tr>
+            <tr><td><kbd>↑</kbd><kbd>↓</kbd></td><td data-i18n="k2">选择</td></tr>
+            <tr><td><kbd>↵</kbd></td><td data-i18n="k3">粘贴到光标处</td></tr>
+            <tr><td><kbd>⌥↵</kbd></td><td data-i18n="k4">以纯文本粘贴（不带格式）</td></tr>
+            <tr><td><kbd>→</kbd><kbd>←</kbd></td><td data-i18n="k5">展开 / 收起预览</td></tr>
+            <tr><td><kbd>⌘1</kbd>–<kbd>⌘9</kbd></td><td data-i18n="k6">直接粘贴第 N 条</td></tr>
+            <tr><td><kbd>⌘P</kbd></td><td data-i18n="k7">置顶 / 取消置顶</td></tr>
+            <tr><td><kbd>⌘⌫</kbd></td><td data-i18n="k8">删除这一条</td></tr>
+            <tr><td><kbd>esc</kbd></td><td data-i18n="k9">收起面板</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 截图 ============ -->
+<section class="section" id="showcase">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow" data-i18n="show.eyebrow">实际样子</p>
+      <h2 data-i18n="show.title">长这样</h2>
+      <p class="section-lead" data-i18n="show.lead">原生 SwiftUI + AppKit，跟随系统 Liquid Glass 与深浅色，没有一行第三方 UI 库。</p>
+    </div>
+
+    <div class="showcase-grid">
+      <figure class="shot reveal">
+        <div class="shot-frame"><img src="assets/img/剪切板2.png" alt="Clip 紧凑面板" loading="lazy"></div>
+        <figcaption data-i18n="show.c1">紧凑面板 —— 条目再多，窗口也不跳</figcaption>
+      </figure>
+      <figure class="shot reveal">
+        <div class="shot-frame"><img src="assets/img/任务栏弹窗.png" alt="菜单栏面板" loading="lazy"></div>
+        <figcaption data-i18n="show.c2">菜单栏面板 —— 点状态栏图标即可操作</figcaption>
+      </figure>
+      <figure class="shot reveal">
+        <div class="shot-frame"><img src="assets/img/设置通用.png" alt="设置 · 通用" loading="lazy"></div>
+        <figcaption data-i18n="show.c3">设置 · 通用 —— 记录开关、条数与时长上限</figcaption>
+      </figure>
+      <figure class="shot reveal">
+        <div class="shot-frame"><img src="assets/img/设置外观.png" alt="设置 · 外观" loading="lazy"></div>
+        <figcaption data-i18n="show.c4">设置 · 外观 —— 深浅色、密度、面板尺寸</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 下载安装 ============ -->
+<section class="section section-download" id="download">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow" data-i18n="dl.eyebrow">下载与安装</p>
+      <h2 data-i18n="dl.title">五分钟装好，按下快捷键就能用</h2>
+      <p class="section-lead" data-i18n="dl.lead">通过 GitHub Releases 分发。安装包由 CI 自动构建，附 SHA-256 校验值。</p>
+    </div>
+
+    <div class="download-grid">
+      <aside class="dl-card reveal">
+        <div class="dl-card-head">
+          <img src="assets/img/icon.png" alt="Clip 图标" width="52" height="52">
+          <div>
+            <h3>Clip</h3>
+            <p data-i18n="dl.cardSub">macOS 剪贴板历史管理器</p>
+          </div>
+        </div>
+        <dl class="dl-meta">
+          <div><dt data-i18n="dl.metaVersion">最新版本</dt><dd>v1.0.8 · 2026-10-14</dd></div>
+          <div><dt data-i18n="dl.metaAsset">安装包</dt><dd>Clip-1.0.8.dmg · 806 KB</dd></div>
+          <div><dt data-i18n="dl.metaReq">系统要求</dt><dd data-i18n="dl.metaReqVal">macOS 27（Golden Gate）或更高</dd></div>
+          <div><dt data-i18n="dl.metaLicense">许可</dt><dd>MIT</dd></div>
+        </dl>
+        <a class="btn btn-primary btn-block" href="https://github.com/wrm244/clip/releases/download/v1.0.8/Clip-1.0.8.dmg">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11M7 10l5 5 5-5M4.5 20.5h15"/></svg>
+          <span data-i18n="dl.btnDownload">下载 Clip-1.0.8.dmg</span>
+        </a>
+        <div class="dl-sha">
+          <span class="dl-sha-label">SHA-256</span>
+          <code id="sha-value">109ae682ec490137e0dfe97b4c44290fa4db25365e1c1b4f6840212a59c19eae</code>
+          <button class="copy-btn" type="button" data-copy="109ae682ec490137e0dfe97b4c44290fa4db25365e1c1b4f6840212a59c19eae" data-i18n-aria="dl.copySha" aria-label="复制 SHA-256">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+          </button>
+        </div>
+        <p class="dl-verify" data-i18n-html="dl.verify">下载后校验：<code>shasum -a 256 ~/Downloads/Clip-1.0.8.dmg</code></p>
+        <a class="dl-all" href="https://github.com/wrm244/clip/releases" target="_blank" rel="noopener">
+          <span data-i18n="dl.allVersions">查看所有版本与更新日志</span>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+      </aside>
+
+      <div class="steps reveal">
+        <ol class="step-list">
+          <li class="step">
+            <span class="step-num">1</span>
+            <div class="step-body">
+              <h4 data-i18n="s1.title">下载 .dmg</h4>
+              <p data-i18n="s1.desc">从 GitHub Releases 下载最新版的 Clip-1.0.8.dmg。也可以点上方按钮直接开始下载。</p>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-num">2</span>
+            <div class="step-body">
+              <h4 data-i18n="s2.title">拖进「应用程序」</h4>
+              <p data-i18n="s2.desc">打开 .dmg，把 Clip 拖到「应用程序」文件夹（或运行其中的安装示意），然后弹出镜像。</p>
+            </div>
+          </li>
+          <li class="step step-highlight">
+            <span class="step-num">3</span>
+            <div class="step-body">
+              <h4 data-i18n="s3.title">首次启动（重要）</h4>
+              <p data-i18n="s3.desc">Clip 使用自签名证书，Gatekeeper 可能提示「无法验证开发者」。在「应用程序」里右键 → 打开，再点「打开」；或在「终端」执行：</p>
+              <div class="code-block">
+                <code>xattr -dr com.apple.quarantine /Applications/Clip.app</code>
+                <button class="copy-btn" type="button" data-copy="xattr -dr com.apple.quarantine /Applications/Clip.app" data-i18n-aria="dl.copyCmd" aria-label="复制命令">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                </button>
+              </div>
+              <p data-i18n="s3.desc2">之后启动，菜单栏会出现剪贴板图标。</p>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-num">4</span>
+            <div class="step-body">
+              <h4 data-i18n="s4.title">开启自动粘贴（可选）</h4>
+              <p data-i18n="s4.desc">想让 Clip 帮你按下 ⌘V，去 系统设置 → 隐私与安全性 → 辅助功能 勾选 Clip。不授权也能用，只是变成「复制好等你手动粘」并给个提示。</p>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-num">5</span>
+            <div class="step-body">
+              <h4 data-i18n="s5.title">按下 ⇧⌘V，开始使用</h4>
+              <p data-i18n="s5.desc">之后每次复制都会被记下。置顶（⌘P）过的条目永远不会被自动清理。</p>
+            </div>
+          </li>
+        </ol>
+
+        <div class="note-card">
+          <div class="note-icon">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8.2v.01M12 11.5V16"/></svg>
+          </div>
+          <p data-i18n="dl.note">辅助功能授权与自签名证书绑定，更新版本后无需重新授权。卸载：退出 Clip 后删掉「应用程序」里的 Clip.app，数据目录 ~/Library/Application Support/Clip 可一并删除。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 隐私 ============ -->
+<section class="section section-tint" id="privacy">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow" data-i18n="pv.eyebrow">隐私</p>
+      <h2 data-i18n="pv.title">剪贴板能看见你复制的一切，所以这件事得说清楚</h2>
+    </div>
+    <div class="grid grid-2">
+      <div class="priv-item reveal">
+        <div class="priv-icon">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>
+        </div>
+        <h3 data-i18n="pv1.title">默认忽略机密内容</h3>
+        <p data-i18n="pv1.desc">密码管理器（1Password、TypeIt4me 等）标记为机密的剪贴板内容不会被记录。</p>
+      </div>
+      <div class="priv-item reveal">
+        <div class="priv-icon">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a8 8 0 0 1 13.6-5.6L20 6M20 3.5V6h-2.5"/><path d="M20 14a8 8 0 0 1-13.6 5.6L4 18M4 20.5V18h2.5"/></svg>
+        </div>
+        <h3 data-i18n="pv2.title">不记录回填内容</h3>
+        <p data-i18n="pv2.desc">不记录自己回填的内容，也不会把你的历史再抄一遍。</p>
+      </div>
+      <div class="priv-item reveal">
+        <div class="priv-icon">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="5" width="4.5" height="14" rx="2.2"/><rect x="13.5" y="5" width="4.5" height="14" rx="2.2"/></svg>
+        </div>
+        <h3 data-i18n="pv3.title">随时暂停记录</h3>
+        <p data-i18n="pv3.desc">菜单栏一键开关，想安静的时候就安静。</p>
+      </div>
+      <div class="priv-item reveal">
+        <div class="priv-icon">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.2"/><path d="M3.5 9.5h17M7.5 4.5v-2M16.5 4.5v-2M8 14h8"/></svg>
+        </div>
+        <h3 data-i18n="pv4.title">数据只在你本机</h3>
+        <p data-i18n="pv4.desc">历史存在 ~/Library/Application Support/Clip，不上传、不同步、没有账号。</p>
+      </div>
+      <div class="priv-item reveal">
+        <div class="priv-icon">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h16M4 12h16M4 17.5h10"/><circle cx="18" cy="17.5" r="2"/></svg>
+        </div>
+        <h3 data-i18n="pv5.title">可设上限</h3>
+        <p data-i18n="pv5.desc">条数（默认 300）和保留时长都可调，还能一键清空全部数据。</p>
+      </div>
+      <div class="priv-item reveal">
+        <div class="priv-icon">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 5 6v5.5c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z"/></svg>
+        </div>
+        <h3 data-i18n="pv6.title">开源可审计</h3>
+        <p data-i18n="pv6.desc">代码在 GitHub 上完全公开，每一行都可以自己看。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 开源 / 构建 ============ -->
+<section class="section" id="opensource">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow" data-i18n="os.eyebrow">开源</p>
+      <h2 data-i18n="os.title">MIT 协议，欢迎折腾</h2>
+      <p class="section-lead" data-i18n="os.lead">基于 MIT 协议发布，可以自由使用、修改与分发。</p>
+    </div>
+
+    <div class="os-grid">
+      <div class="os-stack card reveal">
+        <h3 data-i18n="os.stackTitle">技术栈</h3>
+        <ul class="os-list">
+          <li data-i18n="os.li1">原生 SwiftUI + AppKit，零第三方依赖</li>
+          <li data-i18n="os.li2">菜单栏代理（LSUIElement）常驻，不占 Dock</li>
+          <li data-i18n="os.li3">SwiftData 增量持久化，图片等二进制外置为文件</li>
+          <li data-i18n="os.li4">Carbon RegisterEventHotKey 全局热键，无需辅助功能权限</li>
+          <li data-i18n="os.li5">界面遵循 Apple 人机界面指南，系统原生 Liquid Glass</li>
+          <li data-i18n="os.li6">Swift 6 严格并发，UI 与 I/O 分actor隔离</li>
+        </ul>
+        <div class="os-tags">
+          <span>Swift 6</span><span>SwiftUI</span><span>AppKit</span><span>SwiftData</span><span>WidgetKit</span><span>XcodeGen</span>
+        </div>
+      </div>
+
+      <div class="os-build card reveal">
+        <h3 data-i18n="os.buildTitle">从源码构建</h3>
+        <p data-i18n="os.buildDesc">需要 XcodeGen（brew install xcodegen），工程由 project.yml 生成：</p>
+        <div class="code-block code-block-lg">
+          <pre><code>brew install xcodegen
+xcodegen generate
+open Clip.xcodeproj</code></pre>
+          <button class="copy-btn" type="button" data-copy="brew install xcodegen
+xcodegen generate
+open Clip.xcodeproj" data-i18n-aria="os.copyBuild" aria-label="复制构建命令">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+          </button>
+        </div>
+        <p data-i18n="os.buildNote">命令行构建与 DMG 打包说明见仓库 README；推 v* 标签后由 GitHub Actions 自动完成构建、签名与上传。</p>
+        <div class="os-links">
+          <a class="btn btn-ghost btn-sm" href="https://github.com/wrm244/clip" target="_blank" rel="noopener" data-i18n="os.linkRepo">仓库</a>
+          <a class="btn btn-ghost btn-sm" href="https://github.com/wrm244/clip/releases" target="_blank" rel="noopener" data-i18n="os.linkReleases">Releases</a>
+          <a class="btn btn-ghost btn-sm" href="https://github.com/wrm244/clip/issues" target="_blank" rel="noopener" data-i18n="os.linkIssues">Issues</a>
+          <a class="btn btn-ghost btn-sm" href="https://github.com/wrm244/clip/blob/main/LICENSE" target="_blank" rel="noopener" data-i18n="os.linkLicense">LICENSE</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 结尾 CTA ============ -->
+<section class="final-cta">
+  <div class="wrap final-inner reveal">
+    <img src="assets/img/icon.png" alt="Clip 图标" width="64" height="64">
+    <h2 data-i18n="cta.title">让剪贴板记住该记住的</h2>
+    <p data-i18n="cta.sub">806 KB，一个菜单栏小工具，和一段不用再丢的历史。</p>
+    <div class="cta-row cta-row-center">
+      <a class="btn btn-primary" href="https://github.com/wrm244/clip/releases/download/v1.0.8/Clip-1.0.8.dmg">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11M7 10l5 5 5-5M4.5 20.5h15"/></svg>
+        <span data-i18n="hero.ctaDownload">下载 Clip for macOS</span>
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/wrm244/clip" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" width="17" height="17" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span data-i18n="hero.ctaGithub">GitHub 仓库</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============ 页脚 ============ -->
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <img src="assets/img/icon.png" alt="" width="22" height="22">
+      <span>Clip</span>
+    </div>
+    <p class="footer-line" data-i18n="footer.line">纯 SwiftUI + AppKit · 零第三方依赖 · 数据只在本机</p>
+    <p class="footer-copy">© <span id="year">2026</span> River · <a href="https://github.com/wrm244/clip/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a> · <span data-i18n="footer.notApple">与 Apple Inc. 无关联</span></p>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

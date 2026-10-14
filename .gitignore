@@ -8,6 +8,9 @@ DerivedData/
 xcuserdata/
 dist/
 
+# 本地 Agent 工作区数据，不入库
+.workbuddy/
+
 # 代码签名证书 / 私钥，绝不入库
 *.p12
 *.pfx
