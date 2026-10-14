@@ -179,9 +179,8 @@ enum LocalizationEnglish {
         "体积": "Size",
         "在浏览器中打开": "Open in Browser",
         "文本较长，仅预览前 %ld 个字符": "Long text — previewing the first %ld characters only",
-        "点击放大查看": "Click to enlarge",
-        "放大查看图片": "Enlarge image",
-        "点击或按 esc 关闭": "Click or press esc to close",
+        "点击预览": "Click to preview",
+        "预览图片": "Preview image",
 
         // MARK: 菜单栏面板
         "%ld 条历史 · %@ 呼出": "%ld items · open with %@",
