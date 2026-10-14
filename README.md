@@ -168,7 +168,7 @@ xcodebuild -project Clip.xcodeproj -scheme Clip \
 ### 打包与发版
 
 ```bash
-Scripts/make-dmg.sh build/Build/Products/Release/Clip.app dist v1.0.6
+Scripts/make-dmg.sh build/Build/Products/Release/Clip.app dist v1.0.8
 ```
 
 `.github/workflows/release.yml` 在推 `v*` 标签后自动完成构建、打包、上传。
