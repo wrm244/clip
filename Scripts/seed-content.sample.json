@@ -1,0 +1,26 @@
+[
+  { "mode": "string", "value": "https://developer.apple.com/design/human-interface-guidelines/" },
+  { "mode": "string", "value": "#4C6EF5" },
+  { "mode": "string", "value": "rgba(255, 107, 107, 0.85)" },
+  { "mode": "image", "path": "/tmp/clip-seed/img_Mac_Blue.png" },
+  { "mode": "rtf",
+    "value": "富文本粘贴测试：这段文字带粗体，粘回备忘录时格式应该保留。",
+    "bold": "带粗体" },
+  { "mode": "textfile", "path": "/tmp/clip-seed/snippet.swift" },
+  { "mode": "string",
+    "value": "这是一段比较长的文本，用来测试面板里的换行显示和预览面板的排版效果。\n剪贴板历史管理器最容易做砸的地方不是存储，而是「呼出那一刻」的观感：面板要小、位置要准、选中项要稳。\nClip 把窗口高度固定住，条目再多都只在列表内部滚动，呼出时窗口上下不跳。" },
+  { "mode": "image", "path": "/tmp/clip-seed/img_Sonoma.png" },
+  { "mode": "files", "paths": [
+      "/Users/river/Projects/person/clip/README.md",
+      "/Users/river/Projects/person/clip/project.yml",
+      "/Users/river/Projects/person/clip/Scripts/make-dmg.sh"
+  ]},
+  { "mode": "string",
+    "value": "SELECT name, COUNT(*) AS cnt\nFROM clip_record\nWHERE kind = 'link'\nGROUP BY name\nORDER BY cnt DESC\nLIMIT 10;" },
+  { "mode": "image", "path": "/tmp/clip-seed/img_Mac_Purple.png" },
+  { "mode": "string", "value": "shift+cmd+V" },
+  { "mode": "string", "value": "clip://settings/appearance" },
+  { "mode": "string", "value": "把上一条粘贴到光标处" },
+  { "mode": "string",
+    "value": "Meeting notes 2026-10-14\n\n- 面板默认贴着光标弹出，右下优先，空间不够自动翻到左上方\n- 展开预览时左上角固定不动，列表不会横向跳动\n- 图片点一下可以放大到屏幕可视区，再点任意处收起" }
+]
