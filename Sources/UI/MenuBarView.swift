@@ -11,6 +11,11 @@ import SwiftUI
 struct MenuBarView: View {
     static let size = NSSize(width: 340, height: 336)
 
+    /// 底栏三格之间的间隔。
+    private static let footerSpacing: CGFloat = 4
+    /// 面板内容区四周的内边距（`body` 的 `.padding`）。
+    private static let contentPadding: CGFloat = 12
+
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(ClipStore.self) private var store
     @Environment(ClipSettings.self) private var settings
@@ -28,7 +33,7 @@ struct MenuBarView: View {
                 .padding(.vertical, 10)
             footerBar
         }
-        .padding(12)
+        .padding(Self.contentPadding)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
     }
 
@@ -118,9 +123,9 @@ struct MenuBarView: View {
     // MARK: 底部动作
 
     private var footerBar: some View {
-        // 三个动作共用系统的 accessoryBarAction 样式：原生悬停 / 按下反馈、
-        // 原生文字色，三项观感天然一致，不再自己画悬停底色。
-        HStack(spacing: 4) {
+        // 三个动作共用系统的 accessoryBarAction 样式：原生悬停 / 按下反馈、原生文字色。
+        // 宽度靠 `.frame(maxWidth: .infinity)` 自动三等分（见 BarActionLabel）。
+        HStack(spacing: Self.footerSpacing) {
             Button {
                 MenuBarPanel.dismiss?()
                 Task { @MainActor in coordinator.openSettings() }
@@ -128,45 +133,54 @@ struct MenuBarView: View {
                 BarActionLabel(title: L("设置"), symbol: "gearshape")
             }
             .buttonStyle(.accessoryBarAction)
-            .help(L("打开设置"))
             .frame(maxWidth: .infinity)
+            .help(L("打开设置"))
 
-            // 下拉菜单保留系统的菜单指示箭头（chevron），让「点开还有更多选项」一目了然。
-            //
-            // 用 menuStyle(.button) + buttonStyle，而不是已废弃的 .borderlessButton：
-            // 后者会把标签强制画成默认控件文字色，无视 label 上的 foregroundStyle，
-            // 于是「设置」是灰色、「清空」是深色，两者对不上。
-            Menu {
-                Button(L("清空未固定记录")) {
+            // 「清空」是下拉：用普通 Button + 原生 NSMenu（MenuActionButton），
+            // 而不是 SwiftUI 的 Menu。后者的底色由内部按钮按内容的理想宽度绘制，
+            // 会明显比两侧窄一圈；而且 `.menuIndicator(.hidden)` 之后连标签里自画的
+            // chevron 也会被一起丢掉——「不统一样式 + 没有标识」就是这么来的。
+            // 换成和两侧同一个 `.accessoryBarAction` 按钮 + 自弹菜单，三格的底色 /
+            // 高度 / 文字色都由同一套样式决定，天然一致。
+            MenuActionButton {
+                let target = MenuActionTarget()
+                let menu = NSMenu()
+                menu.addItem(target.item(L("清空未固定记录")) {
                     coordinator.clearHistory(keepingPinned: true)
                     MenuBarPanel.dismiss?()
-                }
-                Button(L("清空全部记录"), role: .destructive) {
+                })
+                menu.addItem(target.item(L("清空全部记录"), isDestructive: true) {
                     coordinator.clearHistory(keepingPinned: false)
                     MenuBarPanel.dismiss?()
-                }
-                Divider()
-                Button(L("在访达中显示数据目录")) {
+                })
+                menu.addItem(.separator())
+                menu.addItem(target.item(L("在访达中显示数据目录")) {
                     NSWorkspace.shared.activateFileViewerSelecting([ClipStorage.shared.rootURL])
                     MenuBarPanel.dismiss?()
-                }
+                })
+                return menu
             } label: {
-                BarActionLabel(title: L("清空"), symbol: "trash")
+                BarActionLabel(
+                    title: L("清空"),
+                    symbol: "trash",
+                    trailingSymbol: "chevron.down"
+                )
             }
-            .menuStyle(.button)
-            .buttonStyle(.accessoryBarAction)
-            .menuIndicator(.visible)
-            .help(L("清空记录或打开数据目录"))
             .frame(maxWidth: .infinity)
+            .help(L("清空记录或打开数据目录"))
 
             Button {
                 NSApp.terminate(nil)
             } label: {
-                BarActionLabel(title: L("退出"), symbol: "power", isDestructive: true)
+                BarActionLabel(
+                    title: L("退出"),
+                    symbol: "power",
+                    isDestructive: true
+                )
             }
             .buttonStyle(.accessoryBarAction)
-            .help(L("退出 Clip"))
             .frame(maxWidth: .infinity)
+            .help(L("退出 Clip"))
         }
         .frame(height: 26)
     }
@@ -177,12 +191,14 @@ struct MenuBarView: View {
 /// 悬停 / 按下反馈交给系统的 `.accessoryBarAction`（见 `footerBar`），
 /// 这里只负责图标 + 文案的排版与语义色，避免两套高亮叠在一起。
 ///
-/// 注意：这里不能用 `.secondary`。下拉菜单的 `Menu` 标签会忽略
-/// `foregroundStyle`，始终用默认控件文字色绘制；若两旁按钮单独用灰色，
-/// 三者颜色就会对不上。统一用默认色（退出用红色）才一致。
+/// 宽度用 `maxWidth: .infinity` 弹性撑满：**不能写死等分宽度**，因为按钮样式
+/// 自己还会在左右各加一圈内边距，写死会让三个按钮的总宽超过内容区，把外层
+/// `padding` 顶掉（表现就是底部三格贴到面板左右边缘）。
 private struct BarActionLabel: View {
     let title: String
     let symbol: String
+    /// 挂在文案右侧的补充符号（「清空」自画的菜单箭头）。
+    var trailingSymbol: String? = nil
     var isDestructive: Bool = false
 
     var body: some View {
@@ -192,11 +208,89 @@ private struct BarActionLabel: View {
             Text(title)
                 .font(.system(size: 11, weight: .medium))
                 .lineLimit(1)
+            if let trailingSymbol {
+                Image(systemName: trailingSymbol)
+                    .font(.system(size: 9, weight: .semibold))
+                    .opacity(0.55)
+            }
         }
         .foregroundStyle(isDestructive ? Color.red : Color.primary)
         .frame(maxWidth: .infinity)
         .frame(height: 24)
         .contentShape(.rect)
+    }
+}
+
+/// 外观和普通 `.accessoryBarAction` 按钮完全一致，点击弹出原生 `NSMenu`。
+///
+/// 为什么不直接用 SwiftUI 的 `Menu`：它跟 `.accessoryBarAction` 组合时，底色由
+/// 内部按钮按内容的理想宽度绘制（比两侧窄一圈），标签里自画的 `chevron.down`
+/// 也会被丢掉。换成普通 `Button` 自己弹 `NSMenu`，三格就完全同款了。
+private struct MenuActionButton<Label: View>: View {
+    let makeMenu: () -> NSMenu
+    @ViewBuilder var label: () -> Label
+    /// 按钮背后的 NSView，用来给 NSMenu 定位（弹出位置跟着按钮走）。
+    @State private var anchor: NSView?
+
+    var body: some View {
+        Button {
+            guard let anchor, anchor.window != nil else { return }
+            // 以按钮左下角为锚点：菜单从按钮下方展开。
+            makeMenu().popUp(positioning: nil, at: NSPoint(x: 0, y: 0), in: anchor)
+        } label: {
+            label()
+        }
+        .buttonStyle(.accessoryBarAction)
+        .background(NSViewAnchor { anchor = $0 })
+    }
+}
+
+/// 把按钮背后的 NSView 交出来，供 `NSMenu.popUp` 当锚点。
+private struct NSViewAnchor: NSViewRepresentable {
+    let onResolve: (NSView) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        // 延迟到本轮更新之后再回写 @State，避免"更新期间修改状态"。
+        Task { @MainActor in onResolve(view) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+/// 用闭包当 target/action 的菜单项（`NSMenuItem` 只能走 target/action）。
+///
+/// 每个菜单配一个 target：handler 数组挂在它身上，item 的 `tag` 是下标。
+/// `NSMenuItem.target` 是弱引用，所以再把 target 存进每个 item 的 `representedObject`
+/// （强引用）保活——菜单在、item 就在，target 不会被提前释放。
+@MainActor
+private final class MenuActionTarget: NSObject {
+    private var handlers: [() -> Void] = []
+
+    func item(_ title: String, isDestructive: Bool = false, handler: @escaping () -> Void) -> NSMenuItem {
+        let index = handlers.count
+        handlers.append(handler)
+
+        let item = NSMenuItem(title: title, action: #selector(fire(_:)), keyEquivalent: "")
+        item.target = self
+        item.tag = index
+        item.representedObject = self
+        if isDestructive {
+            item.attributedTitle = NSAttributedString(
+                string: title,
+                attributes: [
+                    .font: NSFont.menuFont(ofSize: 0),
+                    .foregroundColor: NSColor.systemRed,
+                ]
+            )
+        }
+        return item
+    }
+
+    @objc private func fire(_ sender: NSMenuItem) {
+        guard handlers.indices.contains(sender.tag) else { return }
+        handlers[sender.tag]()
     }
 }
 
