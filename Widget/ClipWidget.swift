@@ -7,11 +7,9 @@ import WidgetKit
 /// 小组件渲染用的时间线条目：一份快照 + 出发时间。
 struct ClipEntry: TimelineEntry {
     let date: Date
+    /// 主 App 生成快照时的界面语言（BCP-47）。自带文案与相对时间都按它渲染。
     let language: String
     let items: [WidgetFeedItem]
-
-    /// 快照里没有相对时间的实时值，小组件按语言自己算。
-    var isChinese: Bool { language.hasPrefix("zh") }
 }
 
 // MARK: - Provider
@@ -110,7 +108,7 @@ struct ClipWidgetView: View {
                 Image(systemName: "clipboard")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.tint)
-                Text(WidgetText.kindName(item.kind, chinese: entry.isChinese))
+                Text(WidgetText.kindName(item.kind, language: entry.language))
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
@@ -145,7 +143,7 @@ struct ClipWidgetView: View {
                 Text("Clip")
                     .font(.system(size: 12, weight: .semibold))
                 Spacer(minLength: 0)
-                Text(WidgetText.countLabel(entry.items.count, chinese: entry.isChinese))
+                Text(WidgetText.countLabel(entry.items.count, language: entry.language))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
@@ -154,7 +152,7 @@ struct ClipWidgetView: View {
             VStack(spacing: 0) {
                 ForEach(rows) { item in
                     Link(destination: copyURL(item)) {
-                        ClipWidgetRow(item: item, chinese: entry.isChinese) { thumbnail(item) }
+                        ClipWidgetRow(item: item) { thumbnail(item) }
                     }
                     .buttonStyle(.plain)
                     if item.id != rows.last?.id {
@@ -173,9 +171,9 @@ struct ClipWidgetView: View {
             Image(systemName: "clipboard")
                 .font(.system(size: 20, weight: .regular))
                 .foregroundStyle(.tint)
-            Text(WidgetText.emptyTitle(entry.isChinese))
+            Text(WidgetText.emptyTitle(entry.language))
                 .font(.system(size: 13, weight: .semibold))
-            Text(WidgetText.emptyHint(entry.isChinese))
+            Text(WidgetText.emptyHint(entry.language))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -204,7 +202,7 @@ struct ClipWidgetView: View {
 
     private func relativeTime(_ date: Date) -> String {
         let seconds = Date.now.timeIntervalSince(date)
-        if seconds < 45 { return WidgetText.justNow(entry.isChinese) }
+        if seconds < 45 { return WidgetText.justNow(entry.language) }
         let key = entry.language as NSString
         let formatter: RelativeDateTimeFormatter
         if let cached = Self.timeFormatters.object(forKey: key) {
@@ -228,7 +226,6 @@ struct ClipWidgetView: View {
 /// 列表里的一行：图标 / 标题 + 副标题 / 时间。
 private struct ClipWidgetRow<Thumb: View>: View {
     let item: WidgetFeedItem
-    let chinese: Bool
     @ViewBuilder let thumb: () -> Thumb
 
     var body: some View {
@@ -266,31 +263,115 @@ private struct ClipWidgetRow<Thumb: View>: View {
 // MARK: - 自带文案
 
 /// 小组件只用到极少量文案，不值得搬整套本地化表进来；
-/// 语言跟随主 App 写进快照的 `language`。
+/// 语言跟随主 App 写进快照的 `language`（BCP-47）。
+/// 语言码归一化与主 App 的 `Localization.systemLanguage()` 保持同一套规则，
+/// 认识的语言之外回退英文。
 enum WidgetText {
-    static var galleryDescription: String {
-        let chinese = (Locale.preferredLanguages.first ?? "en").hasPrefix("zh")
-        return chinese ? "查看最近的剪贴板历史" : "Your recent clipboard history"
+    /// 把快照里的 BCP-47 语言码归一化成文案表的 key。
+    private static func code(_ language: String) -> String {
+        if language.hasPrefix("zh-Hant") || language.hasPrefix("zh-TW")
+            || language.hasPrefix("zh-HK") || language.hasPrefix("zh-MO") { return "zh-Hant" }
+        if language.hasPrefix("zh") { return "zh-Hans" }
+        if language.hasPrefix("ja") { return "ja" }
+        if language.hasPrefix("ko") { return "ko" }
+        if language.hasPrefix("fr") { return "fr" }
+        if language.hasPrefix("es") { return "es" }
+        if language.hasPrefix("hi") { return "hi" }
+        if language.hasPrefix("ar") { return "ar" }
+        if language.hasPrefix("bn") { return "bn" }
+        return "en"
     }
 
-    static func kindName(_ kind: String, chinese: Bool) -> String {
+    private static func text(_ language: String, _ table: [String: String]) -> String {
+        table[code(language)] ?? table["en"] ?? ""
+    }
+
+    static var galleryDescription: String {
+        // 画廊描述是静态文案，拿不到快照语言，按系统偏好语言显示。
+        let system = Locale.preferredLanguages.first ?? "en"
+        return text(system, [
+            "zh-Hans": "查看最近的剪贴板历史",
+            "zh-Hant": "查看最近的剪貼板歷史",
+            "en": "Your recent clipboard history",
+            "ja": "最近のクリップボード履歴を表示",
+            "ko": "최근 클립보드 기록 보기",
+            "fr": "Votre historique de presse-papiers récent",
+            "es": "Tu historial reciente del portapapeles",
+            "hi": "आपका हालिया क्लिपबोर्ड इतिहास",
+            "ar": "سجل الحافظة الأخير",
+            "bn": "আপনার সাম্প্রতিক ক্লিপবোর্ড ইতিহাস",
+        ])
+    }
+
+    static func kindName(_ kind: String, language: String) -> String {
         switch kind {
-        case "link": chinese ? "链接" : "Link"
-        case "color": chinese ? "颜色" : "Color"
-        case "image": chinese ? "图片" : "Image"
-        case "file": chinese ? "文件" : "File"
-        default: chinese ? "文本" : "Text"
+        case "link": text(language, [
+            "zh-Hans": "链接", "zh-Hant": "連結", "en": "Link", "ja": "リンク", "ko": "링크",
+            "fr": "Lien", "es": "Enlace", "hi": "लिंक", "ar": "رابط", "bn": "লিংক",
+        ])
+        case "color": text(language, [
+            "zh-Hans": "颜色", "zh-Hant": "顏色", "en": "Color", "ja": "カラー", "ko": "색상",
+            "fr": "Couleur", "es": "Color", "hi": "रंग", "ar": "لون", "bn": "রঙ",
+        ])
+        case "image": text(language, [
+            "zh-Hans": "图片", "zh-Hant": "圖片", "en": "Image", "ja": "画像", "ko": "이미지",
+            "fr": "Image", "es": "Imagen", "hi": "चित्र", "ar": "صورة", "bn": "ছবি",
+        ])
+        case "file": text(language, [
+            "zh-Hans": "文件", "zh-Hant": "檔案", "en": "File", "ja": "ファイル", "ko": "파일",
+            "fr": "Fichier", "es": "Archivo", "hi": "फ़ाइल", "ar": "ملف", "bn": "ফাইল",
+        ])
+        default: text(language, [
+            "zh-Hans": "文本", "zh-Hant": "文字", "en": "Text", "ja": "テキスト", "ko": "텍스트",
+            "fr": "Texte", "es": "Texto", "hi": "टेक्स्ट", "ar": "نص", "bn": "টেক্সট",
+        ])
         }
     }
 
-    static func countLabel(_ count: Int, chinese: Bool) -> String {
-        chinese ? "\(count) 项" : (count == 1 ? "1 item" : "\(count) items")
+    static func countLabel(_ count: Int, language: String) -> String {
+        switch code(language) {
+        case "zh-Hans": return "\(count) 项"
+        case "zh-Hant": return "\(count) 項"
+        case "ja": return "\(count) 件"
+        case "ko": return "\(count)개"
+        case "fr": return count == 1 ? "1 élément" : "\(count) éléments"
+        case "es": return count == 1 ? "1 elemento" : "\(count) elementos"
+        case "hi": return "\(count) आइटम"
+        case "ar": return count == 1 ? "عنصر واحد" : (count == 2 ? "عنصران" : "\(count) عناصر")
+        case "bn": return count == 1 ? "1টি আইটেম" : "\(count)টি আইটেম"
+        default: return count == 1 ? "1 item" : "\(count) items"
+        }
     }
 
-    static func justNow(_ chinese: Bool) -> String { chinese ? "刚刚" : "Just now" }
-    static func emptyTitle(_ chinese: Bool) -> String { chinese ? "暂无剪贴板历史" : "No clipboard history" }
-    static func emptyHint(_ chinese: Bool) -> String {
-        chinese ? "复制任意内容后，它会出现在这里" : "Copy something and it’ll show up here"
+    static func justNow(_ language: String) -> String {
+        text(language, [
+            "zh-Hans": "刚刚", "zh-Hant": "剛剛", "en": "Just now", "ja": "たった今", "ko": "방금",
+            "fr": "À l’instant", "es": "Ahora mismo", "hi": "अभी", "ar": "الآن", "bn": "এইমাত্র",
+        ])
+    }
+
+    static func emptyTitle(_ language: String) -> String {
+        text(language, [
+            "zh-Hans": "暂无剪贴板历史", "zh-Hant": "尚無剪貼板記錄", "en": "No clipboard history",
+            "ja": "クリップボード履歴はまだありません", "ko": "클립보드 기록이 없습니다", "fr": "Aucun historique",
+            "es": "Sin historial", "hi": "कोई क्लिपबोर्ड इतिहास नहीं", "ar": "لا يوجد سجل",
+            "bn": "কোনো ক্লিপবোর্ড ইতিহাস নেই",
+        ])
+    }
+
+    static func emptyHint(_ language: String) -> String {
+        text(language, [
+            "zh-Hans": "复制任意内容后，它会出现在这里",
+            "zh-Hant": "複製任何內容後，它會出現在這裡",
+            "en": "Copy something and it’ll show up here",
+            "ja": "コピーするとここに表示されます",
+            "ko": "무언가를 복사하면 여기에 표시됩니다",
+            "fr": "Copiez quelque chose et il apparaîtra ici",
+            "es": "Copia algo y aparecerá aquí",
+            "hi": "कुछ भी कॉपी करें, यहाँ दिख जाएगा",
+            "ar": "انسخ شيئًا ما وسيظهر هنا",
+            "bn": "যেকোনো কিছু কপি করুন, এখানে দেখা যাবে",
+        ])
     }
 }
 
