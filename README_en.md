@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="Docs/icon.png" width="96" alt="Clip icon">
+  <img src="docs/icon.png" width="96" alt="Clip icon">
   <h1>Clip</h1>
   <p><b>Clipboard history manager for macOS</b><br>One shortcut, and your history is right there.</p>
 </div>
@@ -12,7 +12,7 @@
 </p>
 
 <div align="center">
-  <img src="Docs/img/剪切板1.png" width="820" alt="Clip panel with preview expanded">
+  <img src="docs/img/剪切板1.png" width="820" alt="Clip panel with preview expanded">
 </div>
 
 ---
@@ -24,7 +24,7 @@ You copy a snippet of code, switch over to check the docs, then come back needin
 Clip quietly remembers everything you copy, in the background. Hit <kbd>⇧⌘V</kbd> to bring it up, arrow keys to pick an entry, <kbd>↵</kbd> to paste it right where your cursor is.
 
 <p align="center">
-  <img src="Docs/img/剪切板2.png" width="480" alt="Clip compact panel">
+  <img src="docs/img/剪切板2.png" width="480" alt="Clip compact panel">
 </p>
 
 No window docked to the side, no tabs, no having to remember where you put something. The history is right in front of you — scroll and pick.
@@ -36,7 +36,7 @@ No window docked to the side, no tabs, no having to remember where you put somet
 Text, links, color values, code, file paths, images — whatever you copy, Clip keeps it, tagged with the app it came from.
 
 <p align="center">
-  <img src="Docs/img/剪切板1.png" width="820" alt="Type detection and preview">
+  <img src="docs/img/剪切板1.png" width="820" alt="Type detection and preview">
 </p>
 
 The row of pills at the top filters by type, with live counts. Screenshots, design mockups, color values you grabbed — each lands in its own place instead of piling into one undifferentiated list.
@@ -70,7 +70,7 @@ Select an entry and press <kbd>→</kbd> to expand the preview to the right. The
 Not in the mood for keyboard shortcuts? Click the status bar icon instead. Toggle recording, glance at recent entries, paste straight from the menu bar.
 
 <p align="center">
-  <img src="Docs/img/任务栏弹窗.png" width="520" alt="Menu bar panel">
+  <img src="docs/img/任务栏弹窗.png" width="520" alt="Menu bar panel">
 </p>
 
 ### On your desktop too
@@ -108,13 +108,13 @@ Released under the [MIT](LICENSE) license. Use it, modify it, redistribute it.
 **General** — language, recording toggle, ignoring concealed content, retention limits, automatic pasting.
 
 <p align="center">
-  <img src="Docs/img/设置通用.png" width="620" alt="Settings · General">
+  <img src="docs/img/设置通用.png" width="620" alt="Settings · General">
 </p>
 
 **Appearance** — light/dark, list density, whether to show source apps, panel size, and whether the panel appears at the cursor or centered at the top of the screen.
 
 <p align="center">
-  <img src="Docs/img/设置外观.png" width="620" alt="Settings · Appearance">
+  <img src="docs/img/设置外观.png" width="620" alt="Settings · Appearance">
 </p>
 
 **Shortcuts** — rebind the global hotkey, and a quick reference for every shortcut inside the panel.

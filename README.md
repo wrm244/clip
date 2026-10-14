@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="Docs/icon.png" width="96" alt="Clip 图标">
+  <img src="docs/icon.png" width="96" alt="Clip 图标">
   <h1>Clip</h1>
   <p><b>macOS 剪贴板历史管理器</b><br>按一下快捷键，历史就在手边。</p>
 </div>
@@ -12,7 +12,7 @@
 </p>
 
 <div align="center">
-  <img src="Docs/img/剪切板1.png" width="820" alt="Clip 面板展开预览">
+  <img src="docs/img/剪切板1.png" width="820" alt="Clip 面板展开预览">
 </div>
 
 ---
@@ -24,7 +24,7 @@
 Clip 在后台安静地记下你复制过的一切。**⇧⌘V** 随时呼出，方向键选一条，**回车** 直接粘到光标处。
 
 <p align="center">
-  <img src="Docs/img/剪切板2.png" width="480" alt="Clip 紧凑面板">
+  <img src="docs/img/剪切板2.png" width="480" alt="Clip 紧凑面板">
 </p>
 
 没有窗口常驻，没有标签页，不用先想「我要找什么」——历史就摊在你面前，翻一下就行。
@@ -36,7 +36,7 @@ Clip 在后台安静地记下你复制过的一切。**⇧⌘V** 随时呼出，
 文本、链接、颜色值、代码、文件路径、图片，复制什么记什么，每条都标着来自哪个应用。
 
 <p align="center">
-  <img src="Docs/img/剪切板1.png" width="820" alt="分类识别与预览">
+  <img src="docs/img/剪切板1.png" width="820" alt="分类识别与预览">
 </p>
 
 顶部一排药丸是分类筛选，带实时计数。截图、设计稿、复制的色值，各自归位不打架。
@@ -70,7 +70,7 @@ Clip 在后台安静地记下你复制过的一切。**⇧⌘V** 随时呼出，
 不方便用快捷键时，点状态栏图标也行。开关记录、看最近几条、直接从菜单栏粘贴。
 
 <p align="center">
-  <img src="Docs/img/任务栏弹窗.png" width="520" alt="菜单栏面板">
+  <img src="docs/img/任务栏弹窗.png" width="520" alt="菜单栏面板">
 </p>
 
 ### 桌面上也放一块
@@ -108,13 +108,13 @@ Clip 在后台安静地记下你复制过的一切。**⇧⌘V** 随时呼出，
 **通用** —— 语言、记录开关、忽略机密内容、保留条数与时长、是否自动粘贴。
 
 <p align="center">
-  <img src="Docs/img/设置通用.png" width="620" alt="设置 · 通用">
+  <img src="docs/img/设置通用.png" width="620" alt="设置 · 通用">
 </p>
 
 **外观** —— 深浅色、列表密度、是否显示来源应用、面板尺寸，以及「贴着光标弹出」还是「屏幕上方居中」。
 
 <p align="center">
-  <img src="Docs/img/设置外观.png" width="620" alt="设置 · 外观">
+  <img src="docs/img/设置外观.png" width="620" alt="设置 · 外观">
 </p>
 
 **快捷键** —— 改全局呼出键，速查面板内的所有快捷键。

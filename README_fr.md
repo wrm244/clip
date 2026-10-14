@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="Docs/icon.png" width="96" alt="Icône Clip">
+  <img src="docs/icon.png" width="96" alt="Icône Clip">
   <h1>Clip</h1>
   <p><b>Gestionnaire d'historique du presse-papiers pour macOS</b><br>Un raccourci, et votre historique est là.</p>
 </div>
@@ -12,7 +12,7 @@
 </p>
 
 <div align="center">
-  <img src="Docs/img/剪切板1.png" width="820" alt="Panneau Clip avec aperçu déroulé">
+  <img src="docs/img/剪切板1.png" width="820" alt="Panneau Clip avec aperçu déroulé">
 </div>
 
 ---
@@ -24,7 +24,7 @@ Vous copiez un bout de code, vous allez consulter la documentation, puis vous en
 Clip retient discrètement tout ce que vous copiez, en arrière-plan. <kbd>⇧⌘V</kbd> pour l'appeler, les flèches pour choisir, <kbd>↵</kbd> pour coller exactement là où se trouve votre curseur.
 
 <p align="center">
-  <img src="Docs/img/剪切板2.png" width="480" alt="Panneau Clip compact">
+  <img src="docs/img/剪切板2.png" width="480" alt="Panneau Clip compact">
 </p>
 
 Aucune fenêtre attenante, aucun onglet, pas besoin de se souvenir où l'on a rangé un truc. L'historique est là, devant vous — faites défiler et choisissez.
@@ -36,7 +36,7 @@ Aucune fenêtre attenante, aucun onglet, pas besoin de se souvenir où l'on a ra
 Du texte, des liens, des valeurs de couleur, du code, des chemins de fichiers, des images — tout ce que vous copiez est conservé, avec l'application d'origine en étiquette.
 
 <p align="center">
-  <img src="Docs/img/剪切板1.png" width="820" alt="Détection du type et aperçu">
+  <img src="docs/img/剪切板1.png" width="820" alt="Détection du type et aperçu">
 </p>
 
 La rangée de pastilles en haut filtre par type, avec un décompte en direct. Captures d'écran, maquettes, valeurs de couleur copiées — chacun trouve sa place au lieu de tout mélanger dans une même liste.
@@ -70,7 +70,7 @@ Sélectionnez une entrée et appuyez sur <kbd>→</kbd> pour dérouler l'aperçu
 Si vous préférez éviter le clavier, cliquez sur l'icône de la barre des menus. Activer l'enregistrement, consulter les entrées récentes, coller directement depuis le menu.
 
 <p align="center">
-  <img src="Docs/img/任务栏弹窗.png" width="520" alt="Panneau de la barre des menus">
+  <img src="docs/img/任务栏弹窗.png" width="520" alt="Panneau de la barre des menus">
 </p>
 
 ### Aussi sur le Bureau
@@ -108,13 +108,13 @@ Publié sous licence [MIT](LICENSE). Utilisez-le, modifiez-le, redistribuez-le.
 **Général** — langue, activation de l'enregistrement, exclusion des contenus confidentiels, limites de conservation, collage automatique.
 
 <p align="center">
-  <img src="Docs/img/设置通用.png" width="620" alt="Réglages · Général">
+  <img src="docs/img/设置通用.png" width="620" alt="Réglages · Général">
 </p>
 
 **Apparence** — clair / sombre, densité de la liste, affichage des applications d'origine, taille du panneau, et apparition au curseur ou centrée en haut de l'écran.
 
 <p align="center">
-  <img src="Docs/img/设置外观.png" width="620" alt="Réglages · Apparence">
+  <img src="docs/img/设置外观.png" width="620" alt="Réglages · Apparence">
 </p>
 
 **Raccourcis** — modifier le raccourci global, et un rappel de tous les raccourcis du panneau.
