@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import WidgetKit
+import os
 
 fileprivate nonisolated struct WidgetFeedThumbWrite: Sendable {
     let name: String
