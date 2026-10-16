@@ -67,9 +67,9 @@ enum PasteboardReader {
         let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
         guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL],
               !urls.isEmpty else { return nil }
-        let allPaths = urls.filter(\.isFileURL).map(\.path)
-        guard !allPaths.isEmpty else { return nil }
-        let paths = allPaths.count > maxFilePaths ? Array(allPaths.prefix(maxFilePaths)) : allPaths
+        // 先过滤再截断，避免拖入几千个文件时先为全部路径建数组。
+        let paths = Array(urls.lazy.filter(\.isFileURL).prefix(maxFilePaths).map(\.path))
+        guard !paths.isEmpty else { return nil }
         let text = paths.joined(separator: "\n")
         return ClipDraft(
             kind: .file,
@@ -115,7 +115,12 @@ enum PasteboardReader {
     // MARK: 图片
 
     private static func readImage(_ pasteboard: NSPasteboard, maxItemBytes: Int, sourceName: String?, sourceBundleID: String?) -> ClipDraft? {
-        guard let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff), !data.isEmpty else {
+        let data: Data
+        if let png = pasteboard.data(forType: .png), !png.isEmpty {
+            data = png
+        } else if let tiff = pasteboard.data(forType: .tiff), !tiff.isEmpty {
+            data = tiff
+        } else {
             return nil
         }
         let id = UUID()

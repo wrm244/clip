@@ -10,6 +10,10 @@ final class ClipboardMonitor {
     private var lastChangeCount: Int
     /// 前台应用是 Clip 自己时的重试计数，避免误判导致漏采。
     private var deferralCount = 0
+    /// 采集任务队列。多个 changeCount 事件必须按观察到顺序提交，否则两个内容的
+    /// 哈希任务完成顺序不同，会让旧内容反而成为“最近使用”。
+    private var ingestTask: Task<Void, Never>?
+    private var ingestGeneration: UInt64 = 0
     private let store: ClipStore
     private let settings: ClipSettings
 
@@ -39,6 +43,18 @@ final class ClipboardMonitor {
         timer = nil
     }
 
+    /// 等待已经排队的采集任务结束（退出前调用）。
+    /// 不取消任务：最后一个剪贴板内容可能还在后台做哈希或图片转码，取消会把
+    /// 用户刚复制的内容直接丢掉。
+    func drain() async {
+        while true {
+            let generation = ingestGeneration
+            guard let task = ingestTask else { return }
+            await task.value
+            if ingestGeneration == generation { return }
+        }
+    }
+
     private func poll() {
         let pasteboard = NSPasteboard.general
         let changeCount = pasteboard.changeCount
@@ -63,14 +79,7 @@ final class ClipboardMonitor {
                 lastChangeCount = changeCount
                 deferralCount = 0
                 Log.monitor.debug("采集到 \(draft.kind.rawValue, privacy: .public) 内容，\(draft.byteCount) 字节")
-                // 哈希是 O(内容长度) 的，放到后台算；主线程只负责把剪贴板负载拷出来
-                // （NSPasteboard 只能在主线程访问，这一步没法挪）。
-                Task {
-                    let finalized = await Task.detached(priority: .utility) {
-                        PasteboardReader.finalizeHash(draft)
-                    }.value
-                    await store.ingest(finalized)
-                }
+                enqueueIngest(draft)
                 return
             }
             Log.monitor.debug("剪贴板内容无法识别，已跳过")
@@ -80,5 +89,28 @@ final class ClipboardMonitor {
 
         deferralCount = 0
         lastChangeCount = changeCount
+    }
+
+    /// 将采集串行成一条链：哈希/图片转码可以并行准备，但真正进入 store
+    /// 的顺序必须和 poll 观察到的顺序一致。
+    private func enqueueIngest(_ draft: ClipDraft) {
+        let previous = ingestTask
+        ingestGeneration &+= 1
+        let generation = ingestGeneration
+        ingestTask = Task { @MainActor [weak self] in
+            // 先等上一笔完全提交，避免两条内容互相覆盖/乱序 bump。
+            await previous?.value
+            guard !Task.isCancelled, let self else { return }
+            // 哈希是 O(内容长度) 的。传值 draft 到 detached task，避免占用主线程。
+            let finalized = await Task.detached(priority: .utility) {
+                PasteboardReader.finalizeHash(draft)
+            }.value
+            guard !Task.isCancelled else { return }
+            await self.store.ingest(finalized)
+            // 只有队尾任务可以清空引用；否则会把后来排入的任务误置 nil。
+            if self.ingestGeneration == generation {
+                self.ingestTask = nil
+            }
+        }
     }
 }

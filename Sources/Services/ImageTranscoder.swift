@@ -22,6 +22,7 @@ actor ImageTranscoder {
     ///     （README 承诺的「超限图片自动降采样」）；实在降不下去才放弃。
     ///   - maxPixel: 最长边上限，超大截图会被等比缩小。
     func transcode(_ data: Data, maxBytes: Int, maxPixel: Int = 4096, thumbnailPixel: Int = 720) -> TranscodedImage? {
+        guard maxBytes > 0, maxPixel > 0, thumbnailPixel > 0 else { return nil }
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
             return nil
@@ -29,6 +30,7 @@ actor ImageTranscoder {
         let pixelWidth = properties[kCGImagePropertyPixelWidth] as? Int ?? 0
         let pixelHeight = properties[kCGImagePropertyPixelHeight] as? Int ?? 0
         guard pixelWidth > 0, pixelHeight > 0 else { return nil }
+        let orientation = properties[kCGImagePropertyOrientation] as? Int ?? 1
 
         // PNG 是无损格式，截图 / 照片重新编码后常常比原始数据大好几倍——
         // 只按像素上限缩一次是不够的（例如 4096px 的 PNG 仍可能有十几 MB）。
@@ -38,7 +40,13 @@ actor ImageTranscoder {
         // 关键：只在第一轮从源图解码，之后直接在内存里缩小已解码的位图，
         // 不再回源图重复解码（旧实现每轮都重新解出一张最长边 4096px 的位图，
         // 既白费 CPU，峰值内存也叠加）。
-        guard var image = decode(source, maxPixel: maxPixel, originalWidth: pixelWidth, originalHeight: pixelHeight) else {
+        guard var image = decode(
+            source,
+            maxPixel: maxPixel,
+            originalWidth: pixelWidth,
+            originalHeight: pixelHeight,
+            orientation: orientation
+        ) else {
             return nil
         }
         var png: Data?
@@ -76,8 +84,14 @@ actor ImageTranscoder {
     }
 
     /// 解码到指定最长边以内。原图本来就小于上限时直接全量解码，避免多余的缩放开销。
-    private func decode(_ source: CGImageSource, maxPixel: Int, originalWidth: Int, originalHeight: Int) -> CGImage? {
-        if max(originalWidth, originalHeight) > maxPixel {
+    private func decode(
+        _ source: CGImageSource,
+        maxPixel: Int,
+        originalWidth: Int,
+        originalHeight: Int,
+        orientation: Int
+    ) -> CGImage? {
+        if max(originalWidth, originalHeight) > maxPixel || orientation != 1 {
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceThumbnailMaxPixelSize: maxPixel,

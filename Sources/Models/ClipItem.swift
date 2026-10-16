@@ -118,7 +118,21 @@ struct ClipItem: Identifiable, Hashable, Codable, Sendable {
     var contentHash: String = ""
 
     var blobNames: [String] {
-        [rtfBlob, imageBlob, thumbBlob].compactMap { $0 }
+        [rtfBlob, imageBlob, thumbBlob]
+            .compactMap { $0 }
+            .filter {
+                !$0.isEmpty && $0 != "." && $0 != ".." && !$0.contains("/")
+            }
+    }
+
+    /// 可交给系统打开的链接。`LinkDetector` 也接受裸 `www.` 地址，
+    /// 但 Foundation 只把带 scheme 的字符串当成绝对 URL，这里统一补上 https。
+    var linkURL: URL? {
+        guard kind == .link, let text else { return nil }
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: value), url.scheme != nil { return url }
+        if value.hasPrefix("www.") { return URL(string: "https://\(value)") }
+        return nil
     }
 }
 
@@ -134,12 +148,10 @@ extension ClipItem {
             }
             return L("图片")
         case .file:
-            let names = (filePaths ?? []).map { ($0 as NSString).lastPathComponent }
-            switch names.count {
-            case 0: return L("文件")
-            case 1: return names[0]
-            default: return L("%@ 等 %ld 个文件", names[0], names.count)
-            }
+            guard let first = filePaths?.first else { return L("文件") }
+            let firstName = (first as NSString).lastPathComponent
+            if filePaths?.count == 1 { return firstName }
+            return L("%@ 等 %ld 个文件", firstName, filePaths?.count ?? 1)
         case .color:
             return text ?? L("颜色")
         case .link, .text:
@@ -157,7 +169,7 @@ extension ClipItem {
             let parent = (first as NSString).deletingLastPathComponent
             return parent.replacingOccurrences(of: NSHomeDirectory(), with: "~")
         case .link:
-            if let host = URL(string: text ?? "")?.host() { return host }
+            if let host = linkURL?.host() { return host }
             return L("链接")
         case .color:
             return L("颜色值")
@@ -220,8 +232,13 @@ extension ClipItem {
     /// 只能在主线程先取好再带进后台；这里只碰纯数据，标为 nonisolated 后可随便调。
     nonisolated var searchableBody: String {
         var parts: [String] = []
-        if let text { parts.append(text) }
-        if let filePaths { parts.append(contentsOf: filePaths) }
+        if let text, !text.isEmpty {
+            parts.append(text)
+        } else if let filePaths {
+            // 文件条目的 text 通常就是换行拼接后的路径；只有旧数据缺少 text
+            // 时才补上路径，避免为 500 个文件再建一份重复搜索文本。
+            parts.append(contentsOf: filePaths)
+        }
         if let sourceName { parts.append(sourceName) }
         return parts.joined(separator: "\n").lowercased()
     }

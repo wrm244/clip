@@ -103,6 +103,9 @@ final class AppCoordinator {
     /// 呼出面板并选中指定条目。
     func showPanel(selecting id: ClipItem.ID) {
         showPanel()
+        // 小组件 / URL Scheme 可能从任意分类跳进来；先恢复全部分类，
+        // 否则目标条目被当前筛选条件挡住时 select(id:) 会静默失败。
+        store.filter = .all
         store.select(id: id)
     }
 
@@ -171,7 +174,10 @@ final class AppCoordinator {
     }
 
     func copyString(_ text: String) {
-        PasteboardWriter.writeString(text)
+        guard PasteboardWriter.writeString(text) else {
+            store.showToast(L("内容已不存在，无法复制"), symbol: "exclamationmark.triangle.fill")
+            return
+        }
         store.showToast(L("已复制"), symbol: "doc.on.doc.fill")
     }
 

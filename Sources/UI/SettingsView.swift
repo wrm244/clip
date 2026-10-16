@@ -421,6 +421,7 @@ struct AboutSettings: View {
 
     @State private var usage = 0
     @State private var isConfirmingErase = false
+    @State private var eraseError: String?
 
     var body: some View {
         Form {
@@ -470,6 +471,11 @@ struct AboutSettings: View {
                 Button(L("清空全部数据…"), role: .destructive) {
                     isConfirmingErase = true
                 }
+                if let eraseError {
+                    Text(eraseError)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red)
+                }
             } footer: {
                 Text(L("会删除全部历史记录与图片文件，此操作无法撤销。固定的条目也会一并删除。"))
             }
@@ -479,11 +485,13 @@ struct AboutSettings: View {
         .confirmationDialog(L("确定要清空全部数据吗？"), isPresented: $isConfirmingErase, titleVisibility: .visible) {
             Button(L("清空全部数据"), role: .destructive) {
                 Task {
-                    await coordinator.store.eraseEverything()
-                    // 缩略图/预览图缓存的键是 blob 文件名，清空后必须一起清，
-                    // 否则已删除的图片还会从缓存里显示出来
-                    ImageCache.shared.clear()
-                    coordinator.store.showToast(L("已清空全部数据"), symbol: "trash.fill")
+                    let cleared = await coordinator.store.eraseEverything()
+                    if cleared {
+                        eraseError = nil
+                        coordinator.store.showToast(L("已清空全部数据"), symbol: "trash.fill")
+                    } else {
+                        eraseError = L("无法清空全部数据")
+                    }
                     usage = await coordinator.store.diskUsage()
                 }
             }

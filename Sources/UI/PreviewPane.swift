@@ -182,7 +182,9 @@ struct PreviewPane: View {
 
     @ViewBuilder
     private func fileDetail(for item: ClipItem) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        // 文件条目最多保留 500 个路径，普通 VStack 会一次性创建全部行视图；
+        // 预览窗只需要按滚动情况构建可见行。
+        LazyVStack(alignment: .leading, spacing: 6) {
             ForEach(item.filePaths ?? [], id: \.self) { path in
                 HStack(spacing: 7) {
                     Image(systemName: "doc")
@@ -210,7 +212,7 @@ struct PreviewPane: View {
             Text(item.text ?? "")
                 .font(.system(size: 12))
                 .textSelection(.enabled)
-            if let url = URL(string: item.text ?? "") {
+            if let url = item.linkURL {
                 Button {
                     NSWorkspace.shared.open(url)
                 } label: {

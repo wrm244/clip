@@ -208,6 +208,7 @@ enum LocalizationFrench {
         "已按保留策略清理 %ld 条": "%ld éléments supprimés selon la politique de conservation",
         "已清空未固定记录": "Éléments non épinglés effacés",
         "已清空全部记录": "Tous les éléments ont été effacés",
+        "无法清空全部数据": "Impossible d’effacer toutes les données",
 
         // MARK: 快捷键显示名
         "空格": "Espace",

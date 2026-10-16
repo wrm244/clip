@@ -30,11 +30,14 @@ final class ImageCache {
 
     private func image(named name: String, in cache: NSCache<NSString, NSImage>, fallback: String?) -> NSImage? {
         if let cached = cache.object(forKey: name as NSString) { return cached }
-        if let image = NSImage(contentsOf: ClipStorage.shared.blobURL(named: name)) {
+        if let url = ClipStorage.shared.blobURL(named: name),
+           let image = NSImage(contentsOf: url) {
             set(image, in: cache, key: name)
             return image
         }
-        if let fallback, let image = NSImage(contentsOf: ClipStorage.shared.blobURL(named: fallback)) {
+        if let fallback,
+           let url = ClipStorage.shared.blobURL(named: fallback),
+           let image = NSImage(contentsOf: url) {
             set(image, in: cache, key: name)
             return image
         }

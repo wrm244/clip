@@ -5,6 +5,9 @@ import Carbon
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 供语言切换时重建主菜单等场景引用当前 delegate。
     static private(set) weak var shared: AppDelegate?
+    /// `applicationShouldTerminate` 可能被重复调用；只允许一个 drain 任务，
+    /// 否则会重复 reply，甚至让 AppKit 在最后一次写入前退出。
+    private var isDrainingForTermination = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // 同一份数据目录只能有一个写入者：如果磁盘上存在另一份 Clip 副本已经在跑，
@@ -37,16 +40,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 退出前把排队中的数据库写入全部落盘。
     ///
-    /// `ClipStore.enqueueSave` 是异步任务链，尾部若还没执行，直接退出会丢掉最后一次复制。
+    /// `ClipStore.enqueueSave` 是异步写入队列，队列若还没执行完，直接退出会丢掉最后一次复制。
     /// `applicationWillTerminate` 是同步的，塞不下 `await`，所以这里返回 `.terminateLater`，
     /// 等 drain 完再 `reply`。
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !isDrainingForTermination else { return .terminateLater }
+        isDrainingForTermination = true
         // 先停采集，避免 drain 期间又插进新的写入。
         AppCoordinator.shared.monitor.stop()
         // 面板尺寸是去抖落盘的，退出前补一笔。
         AppCoordinator.shared.settings.persistPanelMetrics()
         Task { @MainActor in
+            // 采集任务可能还在后台做哈希/转码；先等它把最后一次内容提交给 store，
+            // 再 drain 数据库写入，避免退出时丢掉最后复制的一条。
+            await AppCoordinator.shared.monitor.drain()
             await AppCoordinator.shared.store.drainSavesForTermination()
+            await WidgetFeedWriter.shared.flush()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

@@ -208,6 +208,7 @@ enum LocalizationEnglish {
         "已按保留策略清理 %ld 条": "Removed %ld items by the retention policy",
         "已清空未固定记录": "Cleared unpinned items",
         "已清空全部记录": "Cleared all items",
+        "无法清空全部数据": "Couldn't clear all data",
 
         // MARK: 快捷键显示名
         "空格": "Space",

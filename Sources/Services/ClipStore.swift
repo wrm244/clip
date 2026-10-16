@@ -46,9 +46,13 @@ final class ClipStore {
     private let settings: ClipSettings
     private let storage = ClipStorage.shared
     /// 串行化落库任务：保证数据库写入顺序与内存改动顺序一致，避免新旧快照乱序互相覆盖。
-    /// 注意：任务完成后引用不会被清空，所以判断“是否还有在途写入”不能看它是否为 nil，
-    /// 要用下面的 saveGeneration。
-    private var pendingSave: Task<Void, Never>?
+    ///
+    /// 这里使用一个长期复用、按需启动的 worker 和队列，而不是每次写入都
+    /// `Task { await previous.value ... }` 链接任务。后者的完成 task 会一直持有
+    /// `previous`，形成一条只增不减的任务链，长期运行会保留大量历史快照和闭包。
+    private var pendingWrites: [@Sendable () async -> Void] = []
+    private var pendingWriteIndex = 0
+    private var saveWorker: Task<Void, Never>?
     /// 已排队写入的代数：每排一笔自增。`drainSaves` 靠它识别等待期间有没有新写入插队。
     private var saveGeneration: UInt64 = 0
     /// 「清空全部数据」进行中。置位期间拒绝新的采集，并让在途采集在检查点退出——
@@ -86,6 +90,9 @@ final class ClipStore {
 
     /// 搜索去抖 + 后台匹配的任务。连续输入期间前一个任务被取消。
     private var searchTask: Task<Void, Never>?
+    /// 后台字符串扫描任务。`Task.detached` 不会自动继承父任务取消状态，
+    /// 所以必须单独保存并取消，否则快速输入会同时跑多个大文本扫描。
+    private var searchWorker: Task<SearchRebuildResult, Never>?
     /// 搜索代数：每次计划 / 同步重建可见列表都自增。后台任务完成时若代数已变，
     /// 说明期间又输入了新关键词或发生了结构变化，本次结果作废。
     private var searchGeneration: UInt64 = 0
@@ -122,7 +129,19 @@ final class ClipStore {
         let keptIDs = Set(items.map(\.id))
         let droppedIDs = loaded.map(\.id).filter { !keptIDs.contains($0) }
         if !droppedIDs.isEmpty {
-            await storage.delete(ids: droppedIDs)
+            let droppedBlobs = loaded
+                .filter { !keptIDs.contains($0.id) }
+                .flatMap(\.blobNames)
+            let deleted = await storage.delete(ids: droppedIDs, removingBlobs: droppedBlobs)
+            // 删除失败时不能继续清孤儿文件，也不要让内存和数据库分叉：
+            // 本次会话恢复成完整历史，下一次启动再尝试清理。
+            guard deleted else {
+                items = loaded
+                sortItems()
+                rebuildVisible()
+                notifyHistoryChanged()
+                return
+            }
         }
         let keep = Set(items.flatMap(\.blobNames))
         await storage.purgeOrphanBlobs(keeping: keep)
@@ -162,13 +181,13 @@ final class ClipStore {
                 return
             }
             item.imageBlob = imageBlob
-            item.thumbBlob = thumbBlob
             item.pixelWidth = transcoded.width
             item.pixelHeight = transcoded.height
             item.byteCount = transcoded.png.count
             item.contentHash = transcoded.hash
             blobWrites.append((transcoded.png, imageBlob))
             if let thumbnail = transcoded.thumbnail {
+                item.thumbBlob = thumbBlob
                 blobWrites.append((thumbnail, thumbBlob))
             }
 
@@ -181,7 +200,7 @@ final class ClipStore {
         }
 
         // 转码 / 解析期间可能开始了「清空全部数据」：此时直接丢弃，别写库。
-        guard !isErasing, generation == eraseGeneration else { return }
+        guard settings.isMonitoringEnabled, !isErasing, generation == eraseGeneration else { return }
 
         // 阶段二：先查一次重。命中就只更新用量，不用白写一遍图。
         if let duplicate = duplicateIndex(of: item) {
@@ -195,14 +214,34 @@ final class ClipStore {
         // 缩略图 / 预览图（`ImageCache` 同步读文件）。文件还没写完就先入内存的话，
         // 第一帧只能画占位图标，等下一次重绘才跳成真图——图片条目看起来就是
         // 「缩略图闪一下 / 预览窗里的图晚一拍出现，把下面的尺寸体积挤下去」。
+        var writtenBlobNames: [String] = []
+        var failedBlobNames: Set<String> = []
         for blob in blobWrites {
-            await storage.writeBlob(blob.data, named: blob.name)
+            if await storage.writeBlob(blob.data, named: blob.name) {
+                writtenBlobNames.append(blob.name)
+            } else {
+                failedBlobNames.insert(blob.name)
+            }
+        }
+
+        // 图片主文件写不进去时整条记录不能提交；缩略图只是展示优化，失败时
+        // 去掉引用即可，仍可使用原图作为列表缩略图。
+        if let imageBlob = item.imageBlob, failedBlobNames.contains(imageBlob) {
+            await storage.removeBlobs(writtenBlobNames)
+            showToast(L("图片过大或无法解析，已忽略"), symbol: "exclamationmark.triangle.fill")
+            return
+        }
+        if let thumbBlob = item.thumbBlob, failedBlobNames.contains(thumbBlob) {
+            item.thumbBlob = nil
+        }
+        if let rtfBlob = item.rtfBlob, failedBlobNames.contains(rtfBlob) {
+            item.rtfBlob = nil
         }
 
         // 落盘期间开始过「清空全部数据」：刚写的 Blob 可能已被删掉，直接放弃。
         // 这里必须比对代数：erase 返回时会把 isErasing 清掉，在途采集的恢复点可能落在
         // 那之后，只看布尔值就会漏。
-        guard !isErasing, generation == eraseGeneration else {
+        guard settings.isMonitoringEnabled, !isErasing, generation == eraseGeneration else {
             await storage.removeBlobs(blobWrites.map { $0.name })
             return
         }
@@ -218,13 +257,16 @@ final class ClipStore {
         }
         items.insert(item, at: 0)
         sortItems()
+
+        // 先排入写入，再执行保留策略。否则当新条目刚好超出保留上限时，
+        // prune 会先把 delete 排进队列，随后 insert 又补回数据库，重启后出现
+        // “内存已清理但数据库仍保留”的幽灵记录。
+        let snapshot = item
+        enqueueSave { [storage] in _ = await storage.insert(snapshot) }
+
         prune()
         rebuildVisible()
         notifyHistoryChanged()
-
-        // 阶段五（可挂起）：排队落库。内存状态已就位，这里的 I/O 顺序不影响正确性。
-        let snapshot = item
-        enqueueSave { [storage] in await storage.insert(snapshot) }
     }
 
     /// 内存里是否已有内容相同的条目（图片按转码后的 hash 判重）。
@@ -249,6 +291,7 @@ final class ClipStore {
 
     /// 使用（粘贴/复制）某条记录，把它提到最前面。
     func markUsed(_ id: ClipItem.ID) {
+        guard !isErasing else { return }
         guard let index = itemsByID[id], items.indices.contains(index) else { return }
         items[index].useCount += 1
         items[index].lastUsedAt = .now
@@ -262,6 +305,7 @@ final class ClipStore {
     // MARK: - 修改
 
     func togglePin(_ id: ClipItem.ID) {
+        guard !isErasing else { return }
         guard let index = itemsByID[id], items.indices.contains(index) else { return }
         items[index].isPinned.toggle()
         let updated = items[index]   // 排序前快照：固定状态切换后会换分组
@@ -273,6 +317,7 @@ final class ClipStore {
     }
 
     func remove(_ id: ClipItem.ID) {
+        guard !isErasing else { return }
         guard let index = itemsByID[id], items.indices.contains(index) else { return }
         let removedID = items[index].id
         let blobs = items[index].blobNames
@@ -284,14 +329,14 @@ final class ClipStore {
         rebuildVisible()
         notifyHistoryChanged()
         enqueueSave { [storage] in
-            await storage.delete(ids: [removedID])
-            await storage.removeBlobs(blobs)
+            _ = await storage.delete(ids: [removedID], removingBlobs: blobs)
         }
     }
 
     /// 保留策略改变时立即淘汰一次（设置界面里的「最多保留 / 保留时长」）。
     /// `prune()` 只改内存并排队落库，视图重建由这里补上。
     func applyRetentionNow() {
+        guard !isErasing else { return }
         let before = items.count
         prune()
         rebuildVisible()
@@ -302,6 +347,7 @@ final class ClipStore {
     }
 
     func removeAll(keepingPinned: Bool = true) {
+        guard !isErasing else { return }
         let dropped = items.filter { !(keepingPinned && $0.isPinned) }
         for item in dropped {
             searchIndex[item.id] = nil
@@ -315,28 +361,32 @@ final class ClipStore {
         let blobs = dropped.flatMap(\.blobNames)
         ImageCache.shared.remove(names: blobs)
         enqueueSave { [storage] in
-            await storage.delete(ids: ids)
-            await storage.removeBlobs(blobs)
+            _ = await storage.delete(ids: ids, removingBlobs: blobs)
         }
         showToast(keepingPinned ? L("已清空未固定记录") : L("已清空全部记录"), symbol: "trash.fill")
     }
 
-    func eraseEverything() async {
+    @discardableResult
+    func eraseEverything() async -> Bool {
         // 闸门置位后：新采集会被 ingest 的 guard 丢弃，在途采集也会在各自的检查点退出，
         // 避免它们在清库 / 删 Blobs 之后又把数据写回来。
         isErasing = true
         eraseGeneration &+= 1
         defer { isErasing = false }
+        // 先把排队中的写入全部执行完再整体清空，避免在途写入把数据“复活”。
+        await drainSaves()
+        guard await storage.eraseEverything() else {
+            showToast(L("无法清空全部数据"), symbol: "exclamationmark.triangle.fill")
+            return false
+        }
         items = []
         searchIndex = [:]
         detailCache = [:]
         ImageCache.shared.clear()
         reindexItems()
         rebuildVisible()
-        // 先把排队中的写入全部执行完再整体清空，避免在途写入把数据“复活”。
-        await drainSaves()
-        await storage.eraseEverything()
         notifyHistoryChanged()
+        return true
     }
 
     // MARK: - 选择
@@ -475,6 +525,8 @@ final class ClipStore {
         // 代数自增，作废任何在途的异步搜索结果（它基于更旧的快照）。
         searchGeneration &+= 1
         searchTask?.cancel()
+        searchWorker?.cancel()
+        searchWorker = nil
         // 分词只做一次；匹配时对每条历史是纯 contains 扫描。
         let keywords = normalizedKeywords(searchText)
         // 关键词为空时必须走单独的短路分支，不要对每条都求值 searchHaystack。
@@ -501,6 +553,8 @@ final class ClipStore {
             return
         }
         searchTask?.cancel()
+        searchWorker?.cancel()
+        searchWorker = nil
         searchGeneration &+= 1
         let generation = searchGeneration
         searchTask = Task { [weak self] in
@@ -521,14 +575,25 @@ final class ClipStore {
             uniqueKeysWithValues: ClipKind.allCases.map { ($0, $0.title.lowercased()) }
         )
 
-        let result = await Task.detached(priority: .userInitiated) { () -> SearchRebuildResult in
+        let worker = Task.detached(priority: .userInitiated) { () -> SearchRebuildResult in
             var index = cachedIndex
             var ids: [ClipItem.ID] = []
             ids.reserveCapacity(snapshot.count)
+            guard !Task.isCancelled else {
+                return SearchRebuildResult(ids: [], index: cachedIndex)
+            }
             if keywords.isEmpty {
-                for item in snapshot where filter.matches(item) { ids.append(item.id) }
+                for item in snapshot {
+                    if Task.isCancelled {
+                        return SearchRebuildResult(ids: [], index: cachedIndex)
+                    }
+                    if filter.matches(item) { ids.append(item.id) }
+                }
             } else {
                 for item in snapshot {
+                    if Task.isCancelled {
+                        return SearchRebuildResult(ids: [], index: cachedIndex)
+                    }
                     guard filter.matches(item) else { continue }
                     let haystack: String
                     if let cached = index[item.id] {
@@ -549,10 +614,11 @@ final class ClipStore {
                 }
             }
             return SearchRebuildResult(ids: ids, index: index)
-        }.value
-
-        // 期间又输入了新关键词 / 发生了结构变化 → 本次结果作废。
+        }
+        searchWorker = worker
+        let result = await worker.value
         guard generation == searchGeneration else { return }
+        searchWorker = nil
         // 只补写仍然存在、且尚未缓存的索引项：被删除的条目不要借机复活。
         let liveIDs = Set(snapshot.map(\.id))
         for (id, value) in result.index where searchIndex[id] == nil && liveIDs.contains(id) {
@@ -592,13 +658,15 @@ final class ClipStore {
 
     private func reindexItems() {
         itemsByID = Dictionary(
-            uniqueKeysWithValues: items.enumerated().map { ($0.element.id, $0.offset) }
+            items.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
         )
     }
 
     private func reindexVisible() {
         visibleIndexByID = Dictionary(
-            uniqueKeysWithValues: visibleItems.enumerated().map { ($0.element.id, $0.offset) }
+            visibleItems.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
         )
     }
 
@@ -643,8 +711,7 @@ final class ClipStore {
         let droppedBlobs = dropped.flatMap(\.blobNames)
         ImageCache.shared.remove(names: droppedBlobs)
         enqueueSave { [storage] in
-            await storage.delete(ids: droppedIDs)
-            await storage.removeBlobs(droppedBlobs)
+            _ = await storage.delete(ids: droppedIDs, removingBlobs: droppedBlobs)
         }
     }
 
@@ -654,41 +721,53 @@ final class ClipStore {
     /// 上一笔写完才轮到下一笔：写入顺序与内存改动顺序严格一致，
     /// 不会出现“后产生的快照先落库、再被旧快照覆盖”。写失败只记日志，不影响内存状态。
     private func enqueueSave(_ write: @escaping @Sendable () async -> Void) {
-        let previous = pendingSave
-        saveGeneration += 1
-        pendingSave = Task {
-            await previous?.value
-            await write()
+        saveGeneration &+= 1
+        pendingWrites.append(write)
+        guard saveWorker == nil else { return }
+        saveWorker = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.runSaveQueue()
         }
     }
 
-    /// 整条覆盖式更新（useCount / lastUsedAt / isPinned 等小字段改动都走这里，
-    /// SwiftData 只重写这一行，代价极小）。
+    /// 单 worker 按 FIFO 顺序消费写入队列。所有访问都在 MainActor 上，
+    /// 队列中的闭包只捕获 Sendable 快照，不跨 actor 传递非 Sendable 对象。
+    private func runSaveQueue() async {
+        while pendingWriteIndex < pendingWrites.count {
+            let write = pendingWrites[pendingWriteIndex]
+            pendingWriteIndex += 1
+            await write()
+        }
+        pendingWrites.removeAll(keepingCapacity: true)
+        pendingWriteIndex = 0
+        saveWorker = nil
+    }
+
+    /// 只更新使用状态（useCount / lastUsedAt / isPinned）。
+    /// SwiftData 不会因为全文/文件路径很大而重复写大块数据。
     private func enqueueUpdate(_ item: ClipItem) {
-        enqueueSave { [storage] in await storage.update(item) }
+        enqueueSave { [storage] in _ = await storage.updateUsage(item) }
     }
 
     /// 等待所有在途写入完成（清空数据前调用）。
     ///
-    /// 队尾任务内部链式等待了它之前的每一笔写入，所以「当前队尾完成」就等于
-    /// 「此刻已排队的写入全部落库」；只有等待期间又排进了新写入（代数变化）时才再等一轮。
+    /// 单 worker 会持续消费队列，所以「当前 worker 完成」就等于「此刻已排队的写入
+    /// 全部落库」；只有等待期间又排进了新写入（代数变化）时才再等一轮。
     private func drainSaves() async {
         while true {
-            // 必须先读代数、后读队尾：顺序反过来的话，两次读之间插进来的新写入会被漏等。
             let generation = saveGeneration
-            guard let pending = pendingSave else { return }
-            await pending.value
-            // 绝不能写成 `while let pending = pendingSave { await pending.value }`：
-            // pendingSave 在任务完成后不会被置空，对已完成的任务再 await 会立即返回，
-            // 条件恒为真、循环永不退出——这段代码跑在主线程上，整个 App 会直接卡死
-            // （旧版「清空全部数据」必卡死就是这个原因）。
+            guard let worker = saveWorker else { return }
+            await worker.value
+            // worker 可能已经消费完当前队列；若等待期间又排入了新写入，再等一轮。
+            // 绝不能写成 `while let worker = saveWorker { await worker.value }`：
+            // 已完成的 task 再 await 会立即返回，条件仍可能成立。
             if saveGeneration == generation { return }
         }
     }
 
     /// 退出前等待所有在途写入落库。
     /// 配合 `applicationShouldTerminate` 的 `.terminateLater` 使用，
-    /// 否则 `enqueueSave` 任务链尾部若没跑完，最后一次复制会丢。
+    /// 否则 `enqueueSave` 队列若没跑完，最后一次复制会丢。
     func drainSavesForTermination() async {
         await drainSaves()
     }

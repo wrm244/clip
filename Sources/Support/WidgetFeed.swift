@@ -102,25 +102,27 @@ extension WidgetFeed {
     /// 读快照。失败（首次运行还没写过、权限异常等）返回 nil，由调用方显示占位。
     nonisolated static func load() -> WidgetFeed? {
         guard let data = try? Data(contentsOf: fileURL()) else { return nil }
-        return try? JSONDecoder.widget.decode(WidgetFeed.self, from: data)
+        return try? JSONDecoder.makeWidget().decode(WidgetFeed.self, from: data)
     }
 }
 
 // MARK: - 编解码
 
 extension JSONEncoder {
-    /// 快照统一用它编码：ISO-8601 时间，主 App / 小组件两侧一致。
-    nonisolated static let widget: JSONEncoder = {
+    /// 快照统一使用 ISO-8601 时间。每次返回新实例：JSONEncoder 不是 Sendable，
+    /// 共享单例会在并发时间线刷新/防抖写盘时产生数据竞争。
+    nonisolated static func makeWidget() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         return encoder
-    }()
+    }
 }
 
 extension JSONDecoder {
-    nonisolated static let widget: JSONDecoder = {
+    /// 与编码端保持同一套时间格式。同样不共享可变解码器。
+    nonisolated static func makeWidget() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
-    }()
+    }
 }

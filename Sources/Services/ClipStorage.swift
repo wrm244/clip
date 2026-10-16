@@ -74,8 +74,13 @@ actor ClipStorage {
         isEphemeralFallback = fallback
     }
 
-    nonisolated func blobURL(named name: String) -> URL {
-        blobsURL.appending(path: name)
+    nonisolated static func isSafeBlobName(_ name: String) -> Bool {
+        return !name.isEmpty && name != "." && name != ".." && !name.contains("/")
+    }
+
+    nonisolated func blobURL(named name: String) -> URL? {
+        guard Self.isSafeBlobName(name) else { return nil }
+        return blobsURL.appending(path: name)
     }
 
     private func ensureDirectories() {
@@ -102,6 +107,9 @@ actor ClipStorage {
             try context.save()
             return true
         } catch {
+            // 保存失败时撤销本次 context 内的改动，避免下一次无关写入把一份
+            // 已经失败（尤其是删除/清空）的变更意外落盘。
+            context.rollback()
             Log.store.error("\(operation, privacy: .public)数据库失败：\(String(describing: error), privacy: .public)")
             return false
         }
@@ -134,13 +142,15 @@ actor ClipStorage {
         }
     }
 
-    func insert(_ item: ClipItem) {
+    @discardableResult
+    func insert(_ item: ClipItem) -> Bool {
         let context = self.context
         context.insert(ClipRecord(item))
-        save(context, operation: "写入")
+        return save(context, operation: "写入")
     }
 
-    func update(_ item: ClipItem) {
+    @discardableResult
+    func update(_ item: ClipItem) -> Bool {
         let context = self.context
         let id = item.id
         var descriptor = FetchDescriptor<ClipRecord>(predicate: #Predicate { $0.id == id })
@@ -153,52 +163,107 @@ actor ClipStorage {
                 // 内存里有、库里没有（例如上次写库失败）：补插一条，保持两侧一致。
                 context.insert(ClipRecord(item))
             }
-            save(context, operation: "更新")
+            return save(context, operation: "更新")
         } catch {
             Log.store.error("更新记录失败：\(String(describing: error), privacy: .public)")
+            context.rollback()
+            return false
         }
     }
 
-    func delete(ids: [ClipItem.ID]) {
-        guard !ids.isEmpty else { return }
+    /// 只更新使用状态字段。`markUsed` / `bump` / `togglePin` 不改变正文、
+    /// 文件路径或富文本，避免每次粘贴都把大条目的全文/路径数组重新写一遍。
+    @discardableResult
+    func updateUsage(_ item: ClipItem) -> Bool {
+        let context = self.context
+        let id = item.id
+        var descriptor = FetchDescriptor<ClipRecord>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        do {
+            if let record = try context.fetch(descriptor).first {
+                record.useCount = item.useCount
+                record.lastUsedAt = item.lastUsedAt
+                record.isPinned = item.isPinned
+            } else {
+                // 内存里有、库里没有（例如上次写库失败）：补插完整条目。
+                context.insert(ClipRecord(item))
+            }
+            return save(context, operation: "更新使用状态")
+        } catch {
+            context.rollback()
+            Log.store.error("更新使用状态失败：\(String(describing: error), privacy: .public)")
+            return false
+        }
+    }
+
+    /// 删除记录，并在数据库确认删除成功后删除对应 Blob。
+    /// 不能先删文件再删库：中途失败会让数据库留下指向空文件的记录。
+    @discardableResult
+    func delete(ids: [ClipItem.ID], removingBlobs blobNames: [String] = []) -> Bool {
+        guard !ids.isEmpty else {
+            removeBlobs(blobNames)
+            return true
+        }
         let context = self.context
         let targets = ids
         let descriptor = FetchDescriptor<ClipRecord>(predicate: #Predicate { targets.contains($0.id) })
         do {
-            for record in try context.fetch(descriptor) {
+            let records = try context.fetch(descriptor)
+            guard !records.isEmpty else {
+                removeBlobs(blobNames)
+                return true
+            }
+            for record in records {
                 context.delete(record)
             }
-            save(context, operation: "删除")
+            let saved = save(context, operation: "删除")
+            if saved { removeBlobs(blobNames) }
+            return saved
         } catch {
+            context.rollback()
             Log.store.error("删除记录失败：\(String(describing: error), privacy: .public)")
+            return false
         }
     }
 
-    func deleteAll() {
+    @discardableResult
+    func deleteAll() -> Bool {
         let context = self.context
         do {
             try context.delete(model: ClipRecord.self)
-            save(context, operation: "清空")
+            return save(context, operation: "清空")
         } catch {
+            context.rollback()
             Log.store.error("清空记录失败：\(String(describing: error), privacy: .public)")
+            return false
         }
     }
 
     // MARK: - 二进制负载（保留外置文件）
 
-    func writeBlob(_ data: Data, named name: String) {
+    @discardableResult
+    func writeBlob(_ data: Data, named name: String) -> Bool {
+        guard Self.isSafeBlobName(name) else { return false }
         ensureDirectories()
-        try? data.write(to: blobsURL.appending(path: name), options: .atomic)
+        do {
+            try data.write(to: blobsURL.appending(path: name), options: .atomic)
+            return true
+        } catch {
+            Log.store.error("写入 Blob 失败：\(name, privacy: .public)，\(String(describing: error), privacy: .public)")
+            return false
+        }
     }
 
     func readBlob(named name: String) -> Data? {
-        try? Data(contentsOf: blobsURL.appending(path: name))
+        guard Self.isSafeBlobName(name) else { return nil }
+        return try? Data(contentsOf: blobsURL.appending(path: name))
     }
 
     func removeBlobs(_ names: [String]) {
         let manager = FileManager.default
         for name in names {
-            try? manager.removeItem(at: blobsURL.appending(path: name))
+            guard Self.isSafeBlobName(name), let url = blobURL(named: name) else { continue }
+            try? manager.removeItem(at: url)
         }
     }
 
@@ -216,10 +281,28 @@ actor ClipStorage {
 
     /// 清空全部数据：记录清零，Blobs/ 一并删除。
     /// 注意不能删 Clip.store 本身——容器还开着，删文件会造成不可恢复的损坏。
-    func eraseEverything() {
-        deleteAll()
-        try? FileManager.default.removeItem(at: blobsURL)
-        ensureDirectories()
+    @discardableResult
+    func eraseEverything() -> Bool {
+        // 内存回退时磁盘数据库仍然存在，清空 Blob 会让下次成功打开数据库后
+        // 所有图片条目都指向不存在的文件。宁可本次不清理，也不能破坏磁盘数据。
+        guard !isEphemeralFallback else {
+            Log.store.fault("数据库处于内存回退状态，拒绝删除磁盘 Blob")
+            return false
+        }
+        guard deleteAll() else { return false }
+        do {
+            if FileManager.default.fileExists(atPath: blobsURL.path) {
+                try FileManager.default.removeItem(at: blobsURL)
+            }
+            ensureDirectories()
+        } catch {
+            // 记录已经删掉了，残留的 Blob 只会占用空间，之后可由孤儿清理任务回收。
+            Log.store.error("删除 Blob 目录失败：\(String(describing: error), privacy: .public)")
+            ensureDirectories()
+        }
+        // 数据库清空已经成功，Blob 清理失败只造成空间残留，不应让调用方
+        // 误以为整个操作失败并把旧记录继续留在内存中。
+        return true
     }
 
     /// 数据目录占用的字节数（递归统计 Clip.store / -wal / -shm 与 Blobs/）。

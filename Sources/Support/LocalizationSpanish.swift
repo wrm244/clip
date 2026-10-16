@@ -208,6 +208,7 @@ enum LocalizationSpanish {
         "已按保留策略清理 %ld 条": "Se eliminaron %ld elementos según la política de conservación",
         "已清空未固定记录": "Elementos no fijados borrados",
         "已清空全部记录": "Todos los elementos borrados",
+        "无法清空全部数据": "No se pudieron borrar todos los datos",
 
         // MARK: 快捷键显示名
         "空格": "Espacio",

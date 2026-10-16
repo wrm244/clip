@@ -31,32 +31,40 @@ enum PasteboardWriter {
                 Self.makeTIFFData(from: png)
             }.value
             let itemBox = NSPasteboardItem()
-            itemBox.setData(png, forType: .png)
-            if let tiff {
-                itemBox.setData(tiff, forType: .tiff)
+            guard itemBox.setData(png, forType: .png),
+                  itemBox.setString(item.id.uuidString, forType: PasteboardReader.markerType) else {
+                return false
             }
-            itemBox.setString(item.id.uuidString, forType: PasteboardReader.markerType)
+            if let tiff { _ = itemBox.setData(tiff, forType: .tiff) }
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.writeObjects([itemBox])
-            return true
+            return pasteboard.writeObjects([itemBox])
 
         case .file where !plainText:
             let paths = item.filePaths ?? []
             guard !paths.isEmpty else { return false }
+            // 多选文件可能有很多路径，网络卷上的 fileExists 会阻塞；先放到后台
+            // 统一检查，避免粘贴动作在清空剪贴板前卡住主线程。
+            let allPathsExist = await Task.detached(priority: .userInitiated) {
+                paths.allSatisfy { FileManager.default.fileExists(atPath: $0) }
+            }.value
+            guard allPathsExist, !Task.isCancelled else { return false }
             // 与访达的多文件复制结构一致：每个文件一个 pasteboard item。
             // 每个 item 都必须打 marker，否则这次写回会被 monitor
             // 当成新内容再采集一遍（条目被莫名 bump 一次）。
-            let boxes: [NSPasteboardItem] = paths.map { path in
+            var boxes: [NSPasteboardItem] = []
+            boxes.reserveCapacity(paths.count)
+            for path in paths {
                 let box = NSPasteboardItem()
-                box.setString(URL(fileURLWithPath: path).absoluteString, forType: .fileURL)
-                box.setString(item.id.uuidString, forType: PasteboardReader.markerType)
-                return box
+                guard box.setString(URL(fileURLWithPath: path).absoluteString, forType: .fileURL),
+                      box.setString(item.id.uuidString, forType: PasteboardReader.markerType) else {
+                    return false
+                }
+                boxes.append(box)
             }
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.writeObjects(boxes)
-            return true
+            return pasteboard.writeObjects(boxes)
 
         default:
             // .file 走到这里 = ⌥↩ 纯文本：内容靠 item.text（换行拼接的路径）。
@@ -64,27 +72,31 @@ enum PasteboardWriter {
             assert(item.kind != .file || item.text != nil, ".file 条目缺少 text，与 filePaths 失去同步")
             guard let text = item.text else { return false }
             let itemBox = NSPasteboardItem()
-            itemBox.setString(text, forType: .string)
+            guard itemBox.setString(text, forType: .string),
+                  itemBox.setString(item.id.uuidString, forType: PasteboardReader.markerType) else {
+                return false
+            }
             if !plainText, let name = item.rtfBlob,
                let rtf = await ClipStorage.shared.readBlob(named: name) {
-                itemBox.setData(rtf, forType: .rtf)
+                _ = itemBox.setData(rtf, forType: .rtf)
             }
-            itemBox.setString(item.id.uuidString, forType: PasteboardReader.markerType)
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.writeObjects([itemBox])
-            return true
+            return pasteboard.writeObjects([itemBox])
         }
     }
 
     /// 写入一段自定义文本（例如换算出来的颜色代码）。
-    static func writeString(_ text: String) {
+    @discardableResult
+    static func writeString(_ text: String) -> Bool {
         let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
         let itemBox = NSPasteboardItem()
-        itemBox.setString(text, forType: .string)
-        itemBox.setString("external", forType: PasteboardReader.markerType)
-        pasteboard.writeObjects([itemBox])
+        guard itemBox.setString(text, forType: .string),
+              itemBox.setString("external", forType: PasteboardReader.markerType) else {
+            return false
+        }
+        pasteboard.clearContents()
+        return pasteboard.writeObjects([itemBox])
     }
 
     /// 用 ImageIO 把 PNG 解码后编码成 TIFF。

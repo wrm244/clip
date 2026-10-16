@@ -178,7 +178,7 @@ struct ClipRowView: View {
         Button(item.isPinned ? L("取消固定") : L("固定")) { coordinator.store.togglePin(item.id) }
         switch item.kind {
         case .link:
-            if let url = URL(string: item.text ?? "") {
+            if let url = item.linkURL {
                 Button(L("打开链接")) { NSWorkspace.shared.open(url) }
             }
         case .file:

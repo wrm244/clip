@@ -210,9 +210,11 @@ final class ClipSettings {
         let defaults = UserDefaults.standard
         isMonitoringEnabled = defaults.object(forKey: Key.monitoring) as? Bool ?? true
         ignoreConcealed = defaults.object(forKey: Key.ignoreConcealed) as? Bool ?? true
-        maxItems = defaults.object(forKey: Key.maxItems) as? Int ?? 300
-        retentionDays = defaults.object(forKey: Key.retentionDays) as? Int ?? 0
-        maxItemBytes = defaults.object(forKey: Key.maxItemBytes) as? Int ?? 8 * 1024 * 1024
+        // UserDefaults 可能被旧版本/手工修改写成非法值；保留策略如果拿到
+        // 负数或 0，会在启动时把所有非固定条目静默删掉，所以这里统一夹紧。
+        maxItems = max(100, defaults.object(forKey: Key.maxItems) as? Int ?? 300)
+        retentionDays = max(0, defaults.object(forKey: Key.retentionDays) as? Int ?? 0)
+        maxItemBytes = max(1, defaults.object(forKey: Key.maxItemBytes) as? Int ?? 8 * 1024 * 1024)
         autoPaste = defaults.object(forKey: Key.autoPaste) as? Bool ?? true
         playSound = defaults.object(forKey: Key.playSound) as? Bool ?? false
         density = Density(rawValue: defaults.string(forKey: Key.density) ?? "") ?? .comfortable
@@ -221,14 +223,19 @@ final class ClipSettings {
         popupAtMouse = defaults.object(forKey: Key.popupAtMouse) as? Bool ?? true
         appearance = Appearance(rawValue: defaults.string(forKey: Key.appearance) ?? "") ?? .system
         language = AppLanguage(rawValue: defaults.string(forKey: Key.language) ?? "") ?? .system
-        panelWidth = defaults.object(forKey: Key.panelWidth) as? Double ?? 460
-        panelHeight = defaults.object(forKey: Key.panelHeight) as? Double ?? 520
+        panelWidth = Self.clampMetric(defaults.object(forKey: Key.panelWidth) as? Double ?? 460, to: 360...900)
+        panelHeight = Self.clampMetric(defaults.object(forKey: Key.panelHeight) as? Double ?? 520, to: 320...900)
         if let data = defaults.data(forKey: Key.hotkey),
            let stored = try? JSONDecoder().decode(Shortcut.self, from: data) {
             hotkey = stored
         } else {
             hotkey = .panelDefault
         }
+    }
+
+    private static func clampMetric(_ value: Double, to range: ClosedRange<Double>) -> Double {
+        guard value.isFinite else { return (range.lowerBound + range.upperBound) / 2 }
+        return min(max(value, range.lowerBound), range.upperBound)
     }
 
     func applyAppearance() {
