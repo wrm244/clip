@@ -18,6 +18,11 @@ VERSION="${3:?缺少版本号}"
 APP_PATH="$(cd "$(dirname "$APP_PATH")" && pwd)/$(basename "$APP_PATH")"
 [ -d "$APP_PATH" ] || { echo "找不到 app：$APP_PATH" >&2; exit 1; }
 
+# 打包前先确认签名结构是完整的：签名坏了要在这里失败，
+# 而不是把「用户装不上 / 辅助功能授权对不上」的包发出去。
+# 注意这里只校验结构（--verify 不查信任链），自签名 / ad-hoc 一样能过。
+codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
 APP_NAME="$(basename "$APP_PATH" .app)"
 # 版本号里的 v 前缀不放进文件名，避免出现 Clip-v1.0.0.dmg 这种双份前缀
 SAFE_VERSION="${VERSION#v}"

@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import os
 
 /// AppKit 生命周期与主菜单。应用以菜单栏代理（LSUIElement）方式运行。
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -26,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        // clip:// 的校验令牌放在小组件快照目录里，启动时就位：
+        // 小组件拼 URL 时读同一份文件，网页读不到本地文件，所以伪造不出带令牌的请求。
+        WidgetFeed.ensureURLToken()
         NSAppleEventManager.shared().setEventHandler(
             self,
             andSelector: #selector(handleURLEvent(_:withReply:)),
@@ -75,8 +79,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc
     private func handleURLEvent(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
         guard let value = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
-              let url = URL(string: value) else { return }
-        switch url.host() {
+              let url = URL(string: value),
+              url.scheme?.lowercased() == "clip" else { return }
+        // 令牌校验：URL Scheme 对任何本地进程 / 网页都开放，LaunchServices 也不告诉我们
+        // 调用方是谁。没有令牌就执行，意味着一个网页就能让面板弹出来抢焦点、
+        // 静默改写剪贴板或打开设置窗。令牌由主 App 写在小组件目录，
+        // 小组件拼进 URL；网页无法读本地文件，因而伪造不了。
+        // （脚本 / 快捷指令要用这些 URL 时，从 ~/Library/Application Support/Clip/Widget/url-token 取令牌）
+        let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "token" })?
+            .value
+        guard let token,
+              let expected = WidgetFeed.readURLToken(),
+              token == expected else {
+            Log.panel.error("clip:// 请求缺少或携带了错误的令牌，已忽略：\(url.absoluteString, privacy: .public)")
+            return
+        }
+        switch url.host()?.lowercased() {
         case "show":
             AppCoordinator.shared.showPanel()
         case "copy":

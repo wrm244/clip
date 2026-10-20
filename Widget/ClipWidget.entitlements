@@ -5,14 +5,18 @@
 	<!--
 	 桌面小组件必须开启 App Sandbox（系统强制），但本工程是免签（ad-hoc）构建，
 	 拿不到有效的 App Group 权限（trustd 会以 invalid application signature 为由忽略它）。
-	 因此改用 temporary-exception 只读主 App 的数据目录，靠主 App 导出的快照共享数据。
-	 该临时例外在免签构建下会被沙盒正常承认。
+	 因此改用 temporary-exception 只读主 App 导出的快照目录，靠快照共享数据。
+
+	 授权范围只到 Widget/：同级的 Clip.store / Clip.store-wal / Blobs/ 是完整的
+	 明文剪贴板历史，小组件一个都不需要。以前写的是整个 Clip/ 目录，等于让一个
+	 沙盒进程能读到全部历史；以后扩展里出任何路径拼接问题，能碰到的也只该是
+	 这份 12 条的展示快照。
 	-->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
 	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
 	<array>
-		<string>/Library/Application Support/Clip/</string>
+		<string>/Library/Application Support/Clip/Widget/</string>
 	</array>
 </dict>
 </plist>

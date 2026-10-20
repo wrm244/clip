@@ -10,19 +10,22 @@ struct ClipEntry: TimelineEntry {
     /// 主 App 生成快照时的界面语言（BCP-47）。自带文案与相对时间都按它渲染。
     let language: String
     let items: [WidgetFeedItem]
+    /// `clip://` 动作的校验令牌（主 App 写在快照目录里）。
+    /// 主 App 只执行带这个令牌的 URL，网页读不到本地文件，因而伪造不了。
+    let linkToken: String?
 }
 
 // MARK: - Provider
 
 struct ClipProvider: TimelineProvider {
     func placeholder(in context: Context) -> ClipEntry {
-        ClipEntry(date: .now, language: "zh-Hans", items: WidgetFeedItem.placeholders)
+        ClipEntry(date: .now, language: "zh-Hans", items: WidgetFeedItem.placeholders, linkToken: nil)
     }
 
     func getSnapshot(in context: Context, completion: @escaping @Sendable (ClipEntry) -> Void) {
         // 画廊 / 快照场景给样例数据，避免空态看起来像坏了。
         if context.isPreview {
-            completion(ClipEntry(date: .now, language: "zh-Hans", items: WidgetFeedItem.placeholders))
+            completion(ClipEntry(date: .now, language: "zh-Hans", items: WidgetFeedItem.placeholders, linkToken: nil))
         } else {
             completion(currentEntry())
         }
@@ -41,7 +44,8 @@ struct ClipProvider: TimelineProvider {
         return ClipEntry(
             date: .now,
             language: feed?.language ?? "zh-Hans",
-            items: feed?.items ?? []
+            items: feed?.items ?? [],
+            linkToken: WidgetFeed.readURLToken()
         )
     }
 }
@@ -85,7 +89,7 @@ struct ClipWidgetView: View {
                 Color(nsColor: .controlBackgroundColor)
             }
             // 点空白处打开呼出面板。
-            .widgetURL(URL(string: "clip://show"))
+            .widgetURL(showURL)
     }
 
     @ViewBuilder
@@ -151,10 +155,7 @@ struct ClipWidgetView: View {
 
             VStack(spacing: 0) {
                 ForEach(rows) { item in
-                    Link(destination: copyURL(item)) {
-                        ClipWidgetRow(item: item) { thumbnail(item) }
-                    }
-                    .buttonStyle(.plain)
+                    rowLink(item)
                     if item.id != rows.last?.id {
                         Divider().opacity(0.5)
                     }
@@ -218,8 +219,42 @@ struct ClipWidgetView: View {
         return formatter.localizedString(for: date, relativeTo: .now)
     }
 
-    private func copyURL(_ item: WidgetFeedItem) -> URL {
-        URL(string: "clip://copy/\(item.id.uuidString)") ?? URL(string: "clip://show")!
+    private func copyURL(_ item: WidgetFeedItem) -> URL? {
+        clipURL(host: "copy", pathComponent: item.id.uuidString)
+    }
+
+    /// 点空白处打开的 URL。
+    private var showURL: URL? {
+        clipURL(host: "show")
+    }
+
+    /// 拼带令牌的 `clip://` 地址。
+    /// 没有令牌（快照还没写过）时返回 nil：宁可不响应，
+    /// 也不能留下一个「谁都能驱动 App」的入口。
+    private func clipURL(host: String, pathComponent: String? = nil) -> URL? {
+        guard let token = entry.linkToken, !token.isEmpty else { return nil }
+        var components = URLComponents()
+        components.scheme = "clip"
+        components.host = host
+        if let pathComponent {
+            components.path = "/" + pathComponent
+        }
+        components.queryItems = [URLQueryItem(name: "token", value: token)]
+        return components.url
+    }
+
+    /// 一条可点击的历史。没有令牌时退化成不可点的普通行，
+    /// 不做一个「点了没反应」的 Link。
+    @ViewBuilder
+    private func rowLink(_ item: WidgetFeedItem) -> some View {
+        if let url = copyURL(item) {
+            Link(destination: url) {
+                ClipWidgetRow(item: item) { thumbnail(item) }
+            }
+            .buttonStyle(.plain)
+        } else {
+            ClipWidgetRow(item: item) { thumbnail(item) }
+        }
     }
 }
 

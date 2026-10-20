@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import os
 
 /// 从系统剪贴板抓到的一块内容。
 struct ClipDraft: Sendable {
@@ -22,6 +23,27 @@ struct ClipDraft: Sendable {
 enum PasteboardReader {
     /// 我们自己写回剪贴板时打上的标记，用来区分“系统里的新内容”和“我们的粘贴动作”。
     static let markerType = NSPasteboard.PasteboardType("com.river.clip.marker")
+
+    /// 本次进程启动时随机生成的一次性令牌。
+    ///
+    /// 以前只判断「这个类型在不在」：任何本地进程给内容打上同一个类型，
+    /// 就会被 Monitor 当成「自己写的」而静默排除出历史（采集可以被任意压制，
+    /// “忽略敏感内容”之类的设置也就形同虚设）。现在值里带一次性随机前缀，
+    /// 不知道它就无法伪造。局限：同一用户能读回我们写过的值再重用，
+    /// 这只能抬高门槛；剪贴板没有属主信息，做不到真正不可伪造。
+    static let markerToken = UUID().uuidString
+
+    /// 生成标记值：一次性令牌 + 可读来源（条目 ID / "external"）。
+    /// 后缀只是方便排查，校验只看令牌前缀。
+    static func markerValue(_ source: String) -> String {
+        "\(markerToken):\(source)"
+    }
+
+    /// 剪贴板上的标记是不是本次进程自己写的。
+    static func hasOwnMarker(_ pasteboard: NSPasteboard) -> Bool {
+        guard let value = pasteboard.string(forType: markerType) else { return false }
+        return value.hasPrefix(markerToken + ":")
+    }
 
     /// 密码管理器等应用会给内容打上这些标记，默认不记录。
     private static let concealedTypes: Set<String> = [
@@ -115,10 +137,25 @@ enum PasteboardReader {
     // MARK: 图片
 
     private static func readImage(_ pasteboard: NSPasteboard, maxItemBytes: Int, sourceName: String?, sourceBundleID: String?) -> ClipDraft? {
+        // NSPasteboard 没有「先问大小再取数据」的接口，`data(forType:)` 一定会把
+        // 整块内容读进内存，所以上限只能在拿到数据后**立刻**判：超限直接丢弃，
+        // 不再转码、不落盘、也不留在内存里（以前 maxItemBytes 只是传到函数签名里没用）。
+        //
+        // 输入上限比 maxItemBytes 宽松，因为那个值是「重新编码后的上限」：
+        // TIFF 是未压缩的，一张 5K 截屏就几十 MB，按输出上限判会把正常图片一律拒掉。
+        let limit = inputByteLimit(for: maxItemBytes)
         let data: Data
         if let png = pasteboard.data(forType: .png), !png.isEmpty {
+            guard png.count <= limit else {
+                Log.monitor.debug("剪贴板图片（PNG）超过 \(limit) 字节上限，已跳过")
+                return nil
+            }
             data = png
         } else if let tiff = pasteboard.data(forType: .tiff), !tiff.isEmpty {
+            guard tiff.count <= limit else {
+                Log.monitor.debug("剪贴板图片（TIFF）超过 \(limit) 字节上限，已跳过")
+                return nil
+            }
             data = tiff
         } else {
             return nil
@@ -135,6 +172,17 @@ enum PasteboardReader {
         draft.imageBlob = "\(id.uuidString).png"
         draft.thumbBlob = "\(id.uuidString).jpg"
         return draft
+    }
+
+    /// 原始图片数据的输入上限。
+    ///
+    /// 取 maxItemBytes 的 16 倍（保证「大图会被转码压到上限以内」这条路径还能走），
+    /// 但至少 128 MB、至多 512 MB：再大就不可能是正常截图，直接拒掉，
+    /// 免得一次粘贴就把 GB 级数据读进内存。
+    private static func inputByteLimit(for maxItemBytes: Int) -> Int {
+        let scaled = maxItemBytes.multipliedReportingOverflow(by: 16)
+        let base = scaled.overflow ? Int.max : scaled.partialValue
+        return min(max(base, 128 * 1024 * 1024), 512 * 1024 * 1024)
     }
 
     /// 计算文本 / 文件草稿的去重哈希。

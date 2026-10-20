@@ -39,12 +39,25 @@ settings:
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "Clip Self Signed"
     DEVELOPMENT_TEAM: ""
+    # Hardened Runtime 只加在 Release 上：它禁止 DYLD_INSERT_LIBRARIES 之类的
+    # 同用户注入，而这个 App 手里有「辅助功能」权限（可以合成按键），被注入的
+    # 代价不只是丢数据。Debug 保持关闭，免得干扰本地调试（断点 / 注入工具）。
     ENABLE_HARDENED_RUNTIME: NO
+    # App Sandbox 必须保持关闭：Accessibility（AXIsProcessTrusted）、
+    # 全局快捷键、CGEvent 合成按键、任意文件路径的剪贴板条目，这些在沙盒里
+    # 都拿不到。作为补偿，数据目录按 0700/0600 收紧并排除出备份，见 ClipStorage。
     ENABLE_APP_SANDBOX: NO
     SWIFT_TREAT_WARNINGS_AS_ERRORS: NO
     GCC_TREAT_WARNINGS_AS_ERRORS: NO
     ONLY_ACTIVE_ARCH: YES
     COPY_PHASE_STRIP: NO
+  configs:
+    # 只有发布用的 Release 打开 Hardened Runtime；Debug 保持可注入，方便调试。
+    Release:
+      ENABLE_HARDENED_RUNTIME: YES
+      # Release 里不注入 get-task-allow：它允许同用户进程用调试器 attach，
+      # 等于把上面刚打开的 Hardened Runtime 又绕回去。
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
 
 targets:
   Clip:

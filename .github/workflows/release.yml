@@ -26,29 +26,65 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        # 固定到 v4.2.2 的提交 SHA，而不是可变的 @v4：这个 job 里既有签名私钥，
+        # 又有 contents: write，上游「给标签换指向」的权限不该能落到它头上。
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # 不需要用 token 推送，别把凭据留在 .git/config 里。
+          persist-credentials: false
+          # 只需要打标签的那一个提交。
+          fetch-depth: 1
 
       - name: 环境信息（排查用）
         run: |
+          set -euo pipefail
           sw_vers
           xcode-select -p
           xcodebuild -version
 
       - name: 选择 Xcode 工具链
-        # 默认用镜像自带的最新 Xcode；可用仓库变量 CLIP_XCODE_VERSION 固定到某个版本。
+        env:
+          # 仓库变量（不是用户输入），仍然只接受数字和点后再拼进 sudo 命令。
+          XCODE_VERSION: ${{ vars.CLIP_XCODE_VERSION }}
         run: |
-          if [ -n "${{ vars.CLIP_XCODE_VERSION }}" ]; then
-            sudo xcode-select -s "/Applications/Xcode_${{ vars.CLIP_XCODE_VERSION }}.app"
+          set -euo pipefail
+          if [ -n "${XCODE_VERSION:-}" ]; then
+            case "$XCODE_VERSION" in
+              *[!0-9.]*)
+                echo "::error::CLIP_XCODE_VERSION 只能包含数字和点：$XCODE_VERSION"
+                exit 1
+                ;;
+            esac
+            sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
           fi
           xcodebuild -version
 
       - name: 安装 XcodeGen
-        run: brew install xcodegen
+        env:
+          # 固定版本 + 固定校验和：发布产物要可复现，构建工具不能跟着「最新版」漂。
+          # 升级时同时改版本号和下面的 sha256。
+          XCODEGEN_VERSION: "2.46.0"
+          XCODEGEN_SHA256: "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806"
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --output "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          ACTUAL="$(shasum -a 256 "$RUNNER_TEMP/xcodegen.zip" | cut -d' ' -f1)"
+          if [ "$ACTUAL" != "$XCODEGEN_SHA256" ]; then
+            echo "::error::XcodeGen 校验和不匹配（期望 ${XCODEGEN_SHA256}，实际 ${ACTUAL}）"
+            exit 1
+          fi
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/xcodegen-dist"
+          # 直接用解压后的二进制（zip 里已带 share/xcodegen/SettingPresets），不改系统目录。
+          echo "$RUNNER_TEMP/xcodegen-dist/xcodegen/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/xcodegen-dist/xcodegen/bin/xcodegen" --version
 
       - name: 生成 Xcode 工程
         run: xcodegen generate
 
-      - name: 导入签名证书（未配置则回退 ad-hoc）
+      - name: 导入签名证书
         id: signing
         env:
           # 仓库 Settings → Secrets 里配置：
@@ -59,27 +95,41 @@ jobs:
         run: |
           set -euo pipefail
 
+          KEYCHAIN="$RUNNER_TEMP/clip-signing.keychain-db"
+          P12="$RUNNER_TEMP/cert.p12"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+
+          # p12 里是签名私钥，无论成功失败都不留在 runner 上：失败路径最容易
+          # 被人忽略，所以用 trap 而不是只在末尾 rm。
+          # 钥匙串本身要留到「编译」那一步之后（codesign 还要用它），
+          # 由 job 末尾的「清理签名现场」删除。
+          trap 'rm -f "$P12"' EXIT
+
           # 没配证书 Secret 就回退 ad-hoc：能正常构建发布，但辅助功能授权每次更新会重置。
+          # 降级不阻断发布，但必须在三处可见：日志里的 ::warning::、
+          # signing 步骤的 adhoc 输出（签名校验据此跳过身份断言）、以及 Release 说明。
           if [ -z "${P12_BASE64:-}" ]; then
             echo "::warning::未配置 P12_BASE64，本次使用 ad-hoc 签名（辅助功能授权会在更新后失效）"
             echo "identity=-" >> "$GITHUB_OUTPUT"
+            echo "adhoc=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          KEYCHAIN="$RUNNER_TEMP/clip-signing.keychain-db"
-          security create-keychain -p "" "$KEYCHAIN"
+          # 钥匙串用随机密码，不再用空密码：同一台机器上的进程无需任何凭据即可
+          # unlock 并使用里面的私钥。
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 3600 "$KEYCHAIN"
-          security unlock-keychain -p "" "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 
           # openssl 解码，避免 macOS / GNU base64 参数差异；-A 要求输入是单行。
-          printf '%s' "$P12_BASE64" | openssl base64 -d -A -out "$RUNNER_TEMP/cert.p12" 2>/dev/null || true
-          if [ ! -s "$RUNNER_TEMP/cert.p12" ]; then
+          printf '%s' "$P12_BASE64" | openssl base64 -d -A -out "$P12" 2>/dev/null || true
+          if [ ! -s "$P12" ]; then
             echo "::error::P12_BASE64 解码后为空。请确认 Secret 是单行 base64：base64 -i x.p12 | tr -d '\\n' | pbcopy"
             exit 1
           fi
 
           # 导入前粗检 p12 结构：坏证书早报错，并给出可操作的指引。
-          P12_HEX="$(xxd -p "$RUNNER_TEMP/cert.p12" | tr -d '\n')"
+          P12_HEX="$(xxd -p "$P12" | tr -d '\n')"
           if ! grep -q '2a864886f70d010c0a0102' <<<"$P12_HEX"; then
             echo "::error::p12 中不含私钥（pkcs8ShroudedKeyBag），无法用于签名。请重新导出整条身份。"
             exit 1
@@ -90,14 +140,19 @@ jobs:
             exit 1
           fi
 
-          security import "$RUNNER_TEMP/cert.p12" \
+          security import "$P12" \
             -f pkcs12 \
             -k "$KEYCHAIN" \
             -P "$P12_PASSWORD" \
             -T /usr/bin/codesign \
             -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN"
-          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          # 允许 codesign 静默使用私钥；这里必须给钥匙串密码，否则上面设的随机密码没意义。
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          EXISTING_KEYCHAINS="$(security list-keychains -d user | tr -d '"')"
+          # shellcheck disable=SC2086 # 需要按空白拆分成多个钥匙串名
+          security list-keychains -d user -s "$KEYCHAIN" $EXISTING_KEYCHAINS
 
           # 自签名证书在 runner 上不受信任，find-identity -v 会把它过滤掉，所以不加 -v。
           # 不用 head 提前关闭管道，避免 pipefail 下上游收到 SIGPIPE 而误判失败。
@@ -112,15 +167,33 @@ jobs:
             echo "::error::p12 已导入但未找到代码签名身份，请确认导出的是包含证书与私钥的「代码签名」身份。"
             exit 1
           fi
-          rm -f "$RUNNER_TEMP/cert.p12"
           echo "使用签名身份：$IDENTITY"
           echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "adhoc=false" >> "$GITHUB_OUTPUT"
 
       - name: 解析版本号
         id: version
+        env:
+          # 手动触发用输入值，标签触发用标签名。
+          # 两者都是外部可控字符串，所以一律经 env 传入、绝不用 ${{ }} 拼进脚本正文；
+          # 变量展开发生在 shell 解析脚本之后，引号才真正起作用。
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          # 手动触发用输入值，标签触发用标签名
-          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          set -euo pipefail
+          VERSION="${INPUT_VERSION:-$REF_NAME}"
+          # 白名单：git 允许标签名里出现引号、$、反引号，这些进 shell 就是语法。
+          # 版本号本来只需要 ASCII 字母、数字、点、下划线和连字符。
+          if [ -z "$VERSION" ] || [ "${#VERSION}" -gt 64 ]; then
+            echo "::error::版本号为空或过长：$VERSION"
+            exit 1
+          fi
+          case "$VERSION" in
+            *[!A-Za-z0-9._-]*)
+              echo "::error::版本号只能包含字母、数字、点、下划线、连字符：$VERSION"
+              exit 1
+              ;;
+          esac
           case "$VERSION" in
             v*) ;;
             *) VERSION="v$VERSION" ;;
@@ -132,15 +205,31 @@ jobs:
           echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
           echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
           echo "short=$SHORT" >> "$GITHUB_OUTPUT"
-          echo "版本：$VERSION（短版本号 $SHORT）"
+          echo "版本：${VERSION}（短版本号 ${SHORT}）"
 
       - name: 编译（Release）
         env:
           # macOS 27 已不再支持 Intel，只编 arm64（编 x86_64 会有 deprecation 警告且无意义）。
           # 真有需要可用仓库变量 CLIP_ARCHS 覆盖，例如 "arm64 x86_64"。
           CLIP_ARCHS: ${{ vars.CLIP_ARCHS || 'arm64' }}
+          # 以上都是「外部字符串 → shell 变量」，脚本里只用带引号的 "$VAR"。
+          SIGNING_IDENTITY: ${{ steps.signing.outputs.identity }}
+          SHORT_VERSION: ${{ steps.version.outputs.short }}
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -o pipefail
+          case "$CLIP_ARCHS" in
+            ""|*[!A-Za-z0-9_\ ]*)
+              echo "::error::CLIP_ARCHS 只能包含架构名，用空格分隔：$CLIP_ARCHS"
+              exit 1
+              ;;
+          esac
+          case "$BUILD_NUMBER" in
+            ""|*[!0-9]*)
+              echo "::error::构建号必须是数字：$BUILD_NUMBER"
+              exit 1
+              ;;
+          esac
           xcodebuild \
             -project Clip.xcodeproj \
             -scheme Clip \
@@ -149,33 +238,113 @@ jobs:
             -derivedDataPath build \
             ONLY_ACTIVE_ARCH=NO \
             ARCHS="$CLIP_ARCHS" \
-            MARKETING_VERSION="${{ steps.version.outputs.short }}" \
-            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
-            CODE_SIGN_IDENTITY="${{ steps.signing.outputs.identity }}" \
+            MARKETING_VERSION="$SHORT_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
             build
 
-      - name: 打包 DMG
+      - name: 校验签名
+        env:
+          ADHOC: ${{ steps.signing.outputs.adhoc }}
+          SIGNING_IDENTITY: ${{ steps.signing.outputs.identity }}
+          # 可选：把本地 `security find-certificate -c "Clip Self Signed" -p | openssl x509 -outform der | shasum -a 256`
+          # 的结果填进仓库变量，就能在 CI 上断言签名用的确实是那张证书。
+          EXPECTED_CERT_SHA256: ${{ vars.CLIP_CERT_SHA256 }}
         run: |
+          set -euo pipefail
+          APP="build/Build/Products/Release/Clip.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::找不到构建产物：$APP"
+            exit 1
+          fi
+
+          # 结构与签名完整性：这一步对 ad-hoc 也成立（不校验信任链）。
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --verify --strict --verbose=2 "$APP/Contents/PlugIns/ClipWidget.appex"
+
+          if [ "$ADHOC" = "true" ]; then
+            echo "::warning::ad-hoc 构建：只能校验结构完整性，无法校验身份。"
+            exit 0
+          fi
+
+          # 身份不能悄悄退化成 ad-hoc。
+          INFO="$(codesign -dvvv "$APP" 2>&1 || true)"
+          if grep -q 'Signature=adhoc' <<<"$INFO"; then
+            echo "::error::期望用「${SIGNING_IDENTITY}」签名，实际产物是 ad-hoc。"
+            exit 1
+          fi
+          if ! grep -qF "Authority=$SIGNING_IDENTITY" <<<"$INFO"; then
+            echo "::group::codesign -dvvv"
+            echo "$INFO"
+            echo "::endgroup::"
+            echo "::error::签名身份与导入的证书不一致。"
+            exit 1
+          fi
+
+          # 证书叶子哈希是 TCC（辅助功能授权）的锚点：换了证书的包会让老用户的授权失效，
+          # 所以能用仓库变量固定下来就别放过。
+          if [ -n "${EXPECTED_CERT_SHA256:-}" ]; then
+            mkdir -p "$RUNNER_TEMP/clip-cert"
+            codesign -d --extract-certificates="$RUNNER_TEMP/clip-cert/cert" "$APP" >/dev/null 2>&1 || true
+            ACTUAL_CERT="$(shasum -a 256 "$RUNNER_TEMP/clip-cert/cert0" | cut -d' ' -f1)"
+            if [ -z "$ACTUAL_CERT" ] || [ "$ACTUAL_CERT" != "$EXPECTED_CERT_SHA256" ]; then
+              echo "::error::签名证书不匹配（期望 ${EXPECTED_CERT_SHA256}，实际 ${ACTUAL_CERT}）"
+              exit 1
+            fi
+            echo "签名证书哈希校验通过：$ACTUAL_CERT"
+          else
+            echo "::warning::未设置 CLIP_CERT_SHA256，跳过证书哈希校验（建议设置，避免误用另一张自签名证书发布）。"
+          fi
+
+      - name: 打包 DMG
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
           ./Scripts/make-dmg.sh \
             "build/Build/Products/Release/Clip.app" \
             dist \
-            "${{ steps.version.outputs.tag }}"
+            "$TAG"
           ls -lh dist
+          # 发布包里带一份校验和文件：文档页上的 sha256 是人工维护的常量，
+          # 真正可信的版本在这里随产物一起发布。
+          (cd dist && shasum -a 256 ./*.dmg > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - name: 生成 Release 说明
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          ADHOC: ${{ steps.signing.outputs.adhoc }}
         run: |
-          cat > dist/RELEASE_NOTES.md <<'EOF'
+          set -euo pipefail
+          SHA256="$(cut -d' ' -f1 dist/SHA256SUMS.txt)"
+          DMG_NAME="$(basename "$(ls dist/*.dmg | head -1)")"
+          if [ "$ADHOC" = "true" ]; then
+            SIGNING_NOTE="本构建使用 **ad-hoc 签名**（未配置签名证书）。每次更新后需要重新授予「辅助功能」权限。"
+          else
+            SIGNING_NOTE="本构建使用项目自签名证书，辅助功能授权在更新后仍然保留。"
+          fi
+          cat > dist/RELEASE_NOTES.md <<EOF
           ## 安装
 
-          下载 `.dmg`，打开后把 **Clip** 拖进「应用程序」即可。
+          下载 \`.dmg\`，打开后把 **Clip** 拖进「应用程序」即可。
+
+          ## 校验下载
+
+          \`\`\`
+          shasum -a 256 ~/Downloads/$DMG_NAME
+          # $SHA256
+          \`\`\`
+
+          同版本的校验和也随发布附在 \`SHA256SUMS.txt\` 里。
 
           ## 首次打开
 
+          $SIGNING_NOTE
           本构建未使用 Apple 开发者证书（自签名 / ad-hoc），系统会提示「无法验证开发者」。
           解决办法（任选其一）：
 
           - 在「应用程序」里 **右键 → 打开**，再点「打开」；
-          - 或执行：`xattr -dr com.apple.quarantine /Applications/Clip.app`
+          - 或执行：\`xattr -dr com.apple.quarantine /Applications/Clip.app\`
 
           ## 权限
 
@@ -190,11 +359,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.tag }}
         run: |
-          # Release 已存在（重跑 / 补发）就覆盖上传 DMG，否则新建。
+          set -euo pipefail
+          # Release 已存在（重跑 / 补发）就覆盖上传，否则新建。
+          # 校验和文件一并上传，缺了它用户就没有独立于页面文案的校验来源。
           if gh release view "$VERSION" >/dev/null 2>&1; then
-            gh release upload "$VERSION" dist/*.dmg --clobber
+            gh release upload "$VERSION" dist/*.dmg dist/SHA256SUMS.txt --clobber
           else
-            gh release create "$VERSION" dist/*.dmg \
+            gh release create "$VERSION" dist/*.dmg dist/SHA256SUMS.txt \
               --title "$VERSION" \
               --notes-file dist/RELEASE_NOTES.md
           fi
+
+      - name: 清理签名现场
+        # 不管前面成败都要跑：临时钥匙串里有签名私钥，不能留在 runner 上。
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/clip-signing.keychain-db" >/dev/null 2>&1 || true
+          rm -f "$RUNNER_TEMP/cert.p12"

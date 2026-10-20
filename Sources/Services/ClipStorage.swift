@@ -18,6 +18,13 @@ private enum ClipMigrationPlan: SchemaMigrationPlan {
 
 /// 磁盘存储。布局：~/Library/Application Support/Clip/{Clip.store, Blobs/*}
 ///
+/// **静态数据保护**：历史全文就是数据库里的明文，没有加密（SwiftData /
+/// SQLite 本身不提供静态加密，加就要引 SQLCipher 或自建加密容器）。
+/// 所以这里只做能做的部分：数据目录 0700、库文件和 Blob 0600、
+/// 整棵目录树排除出备份，避免历史随 Time Machine / iCloud 离开本机。
+/// 以同一用户身份运行的代码仍然能读到这些文件——它同样能直接读剪贴板，
+/// 所以这类隔离靠权限是拦不住的，只能靠「不存明文」才能解决。
+///
 /// 条目元数据与文本存进 SwiftData（底层 SQLite，按条增量写，不再全量重写历史文件）；
 /// 图片 / RTF 等大块二进制保留为 `Blobs/` 下的独立文件，记录里只存文件名——
 /// `ImageCache` 依赖同步读盘，保持这个行为可以把改动面降到最小。
@@ -50,7 +57,7 @@ actor ClipStorage {
         let root = base.appending(path: "Clip", directoryHint: .isDirectory)
         rootURL = root
         blobsURL = root.appending(path: "Blobs", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        Self.createPrivateDirectory(at: rootURL)
 
         // 数据库文件：Clip.store（另生成 -wal / -shm）。
         // 以后模型演进时：新增 ClipSchemaV2 + 对应 MigrationStage，登记进 ClipMigrationPlan
@@ -71,7 +78,43 @@ actor ClipStorage {
             fallback = true
             Log.store.error("SwiftData 打开失败，本次运行使用内存容器：\(String(describing: error), privacy: .public)")
         }
+        // 库文件是 SwiftData 按默认 umask 建的（0644），这里统一收紧；
+        // -wal / -shm 在打开时才创建，所以必须在容器建好之后做。
+        Self.restrictStoreFiles(in: root)
         isEphemeralFallback = fallback
+    }
+
+    // MARK: - 磁盘访问控制
+
+    /// 创建（或收紧）一个只有当前用户可进入的目录。
+    /// 剪贴板历史默认是明文：能拦住的是同机其他账号、以及任何按路径遍历的
+    /// 扫描程序，拦不住以本用户身份运行的代码（那需要加密，见 ClipStorage 顶部说明）。
+    nonisolated static func createPrivateDirectory(at url: URL) {
+        let manager = FileManager.default
+        try? manager.createDirectory(at: url, withIntermediateDirectories: true)
+        try? manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+        // 备份会把明文历史复制到 Time Machine / iCloud 等本机之外的地方，
+        // 而用户并没有「把剪贴板同步到云上」的预期。
+        excludeFromBackup(url)
+    }
+
+    /// 把目录 / 文件排除出备份。失败不致命（旧系统或不支持的卷），所以静默跳过。
+    nonisolated static func excludeFromBackup(_ url: URL) {
+        var mutable = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? mutable.setResourceValues(values)
+    }
+
+    /// 收紧数据目录里所有已知文件的权限（数据库本体 + 三个 SQLite 伴生文件）。
+    nonisolated static func restrictStoreFiles(in root: URL) {
+        let manager = FileManager.default
+        for name in ["Clip.store", "Clip.store-wal", "Clip.store-shm"] {
+            let url = root.appending(path: name)
+            guard manager.fileExists(atPath: url.path) else { continue }
+            try? manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            excludeFromBackup(url)
+        }
     }
 
     nonisolated static func isSafeBlobName(_ name: String) -> Bool {
@@ -84,7 +127,7 @@ actor ClipStorage {
     }
 
     private func ensureDirectories() {
-        try? FileManager.default.createDirectory(at: blobsURL, withIntermediateDirectories: true)
+        Self.createPrivateDirectory(at: blobsURL)
     }
 
     // MARK: - ModelContext
@@ -245,8 +288,11 @@ actor ClipStorage {
     func writeBlob(_ data: Data, named name: String) -> Bool {
         guard Self.isSafeBlobName(name) else { return false }
         ensureDirectories()
+        let url = blobsURL.appending(path: name)
         do {
-            try data.write(to: blobsURL.appending(path: name), options: .atomic)
+            try data.write(to: url, options: .atomic)
+            // 原子写会同时生成临时文件，落盘后按 0600 收紧，和目录的 0700 对齐。
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
             return true
         } catch {
             Log.store.error("写入 Blob 失败：\(name, privacy: .public)，\(String(describing: error), privacy: .public)")

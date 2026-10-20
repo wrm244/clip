@@ -32,7 +32,7 @@ enum PasteboardWriter {
             }.value
             let itemBox = NSPasteboardItem()
             guard itemBox.setData(png, forType: .png),
-                  itemBox.setString(item.id.uuidString, forType: PasteboardReader.markerType) else {
+                  itemBox.setString(PasteboardReader.markerValue(item.id.uuidString), forType: PasteboardReader.markerType) else {
                 return false
             }
             if let tiff { _ = itemBox.setData(tiff, forType: .tiff) }
@@ -57,7 +57,7 @@ enum PasteboardWriter {
             for path in paths {
                 let box = NSPasteboardItem()
                 guard box.setString(URL(fileURLWithPath: path).absoluteString, forType: .fileURL),
-                      box.setString(item.id.uuidString, forType: PasteboardReader.markerType) else {
+                      box.setString(PasteboardReader.markerValue(item.id.uuidString), forType: PasteboardReader.markerType) else {
                     return false
                 }
                 boxes.append(box)
@@ -73,7 +73,7 @@ enum PasteboardWriter {
             guard let text = item.text else { return false }
             let itemBox = NSPasteboardItem()
             guard itemBox.setString(text, forType: .string),
-                  itemBox.setString(item.id.uuidString, forType: PasteboardReader.markerType) else {
+                  itemBox.setString(PasteboardReader.markerValue(item.id.uuidString), forType: PasteboardReader.markerType) else {
                 return false
             }
             if !plainText, let name = item.rtfBlob,
@@ -92,7 +92,7 @@ enum PasteboardWriter {
         let pasteboard = NSPasteboard.general
         let itemBox = NSPasteboardItem()
         guard itemBox.setString(text, forType: .string),
-              itemBox.setString("external", forType: PasteboardReader.markerType) else {
+              itemBox.setString(PasteboardReader.markerValue("external"), forType: PasteboardReader.markerType) else {
             return false
         }
         pasteboard.clearContents()

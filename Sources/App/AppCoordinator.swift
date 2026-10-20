@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import os
 
 /// 应用级协调者：持有各服务，串起采集、存储、面板与粘贴。
 @Observable
@@ -201,8 +202,16 @@ final class AppCoordinator {
         let target = panel.previousApp
         panel.hide()
         Task { @MainActor in
-            await activate(target)
-            paste.sendPaste()
+            // 只有真的确认目标应用已经在前台才发按键。
+            // 以前这里无条件 sendPaste()，activate 失败（应用已退出、激活被
+            // 别的窗口抢走）时会把 ⌘V 投给「此刻恰好在前台」的那个应用。
+            guard await activate(target) else {
+                Log.panel.error("目标应用未取得前台焦点，已跳过自动粘贴（内容仍在剪贴板）")
+                NSSound.beep()
+                return
+            }
+            // 最后一道检查在 PasteService 里：按下前再确认一次前台进程。
+            _ = paste.sendPaste(to: target?.processIdentifier)
         }
     }
 
@@ -210,8 +219,10 @@ final class AppCoordinator {
     ///
     /// 只 sleep 一个固定时长是不可靠的：激活是异步的，⌘V 常常打到了
     /// 还没失去焦点的 Clip 自己身上，用户就会觉得“粘贴没进输入框”。
-    private func activate(_ app: NSRunningApplication?) async {
-        guard let app, !app.isTerminated else { return }
+    /// 返回值是「目标应用现在确实是前台应用吗」——轮询只是等待，不能当校验用。
+    @discardableResult
+    private func activate(_ app: NSRunningApplication?) async -> Bool {
+        guard let app, !app.isTerminated else { return false }
         // Clip 是 LSUIElement 代理应用，不会自动把前台让出去，
         // 不主动 hide 的话后面发的 ⌘V 会打回 Clip 自己。
         NSApp.hide(nil)
@@ -229,6 +240,7 @@ final class AppCoordinator {
         }
         // 目标窗口拿到键盘焦点还需要一点点时间
         try? await Task.sleep(for: .milliseconds(80))
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
     }
 
     // MARK: 其他

@@ -64,7 +64,8 @@ final class ClipboardMonitor {
         // 面板是前台时要延后重试——如果此刻就记下新值，下一轮的
         // guard 会因为「没有变化」直接短路，重试永远不会发生，
         // 面板打开期间外部复制的内容就会被整段漏掉。
-        let hasMarker = pasteboard.string(forType: PasteboardReader.markerType) != nil
+        // 只认本次启动生成的令牌，别人打上同名类型不算（否则采集可被任意压制）。
+        let hasMarker = PasteboardReader.hasOwnMarker(pasteboard)
         let concealed = settings.ignoreConcealed && PasteboardReader.isConcealed(pasteboard)
         let clipIsFrontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier
 
