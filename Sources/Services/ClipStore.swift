@@ -63,6 +63,14 @@ final class ClipStore {
     /// 提交前对不上就丢弃（见 `ingest`）。
     private var eraseGeneration: UInt64 = 0
     private var toastTask: Task<Void, Never>?
+
+    /// 最近一次删除的条目，供 ⌘Z 撤销。
+    ///
+    /// 撤销窗口内 Blob 文件先留在磁盘上（只删数据库记录）：图片 / 富文本原样还在，
+    /// 恢复时不用重新转码。窗口结束后才把文件真正删掉——见 `scheduleRemovalUndo`。
+    @ObservationIgnored private var lastRemoval: (items: [ClipItem], purge: Task<Void, Never>)?
+    /// 撤销窗口（秒）：既是 ⌘Z 的有效期，也是被删条目 Blob 在磁盘上多留的时长。
+    private static let undoWindow: Double = 20
     /// 搜索索引缓存：id → 小写拼接的搜索文本（含本地化类型标题）。
     ///
     /// bump / markUsed / togglePin 只改 useCount / lastUsedAt / isPinned，
@@ -262,7 +270,12 @@ final class ClipStore {
         // prune 会先把 delete 排进队列，随后 insert 又补回数据库，重启后出现
         // “内存已清理但数据库仍保留”的幽灵记录。
         let snapshot = item
-        enqueueSave { [storage] in _ = await storage.insert(snapshot) }
+        enqueueSave { [weak self, storage] in
+            guard await storage.insert(snapshot) else {
+                await self?.reportSaveFailure()
+                return
+            }
+        }
 
         prune()
         rebuildVisible()
@@ -319,18 +332,83 @@ final class ClipStore {
     func remove(_ id: ClipItem.ID) {
         guard !isErasing else { return }
         guard let index = itemsByID[id], items.indices.contains(index) else { return }
-        let removedID = items[index].id
-        let blobs = items[index].blobNames
-        searchIndex[removedID] = nil
-        detailCache[removedID] = nil
-        ImageCache.shared.remove(names: blobs)
+        let removed = items[index]
+        searchIndex[removed.id] = nil
+        detailCache[removed.id] = nil
         items.remove(at: index)
         reindexItems()
         rebuildVisible()
         notifyHistoryChanged()
-        enqueueSave { [storage] in
-            _ = await storage.delete(ids: [removedID], removingBlobs: blobs)
+        // 只删数据库记录，Blob 文件留到撤销窗口结束：这一条要是被 ⌘Z 恢复，
+        // 图片 / 富文本仍然在，不用重新转码。真正删文件在 `scheduleRemovalUndo` 里。
+        enqueueSave { [weak self, storage] in
+            guard await storage.delete(ids: [removed.id]) else {
+                await self?.reportSaveFailure()
+                return
+            }
         }
+        scheduleRemovalUndo(for: [removed])
+        showToast(L("已删除，⌘Z 撤销"), symbol: "trash.fill")
+    }
+
+    /// 记下这次删除，并安排撤销窗口结束后回收它的 Blob 文件。
+    ///
+    /// 只保留最近一次：再删一条，上一条就不可撤销了。但上一批的回收任务**不能取消**——
+    /// 它对应的记录已经不在内存里，窗口过去后那些文件必须删掉，否则会一直占着磁盘。
+    private func scheduleRemovalUndo(for removed: [ClipItem]) {
+        guard !removed.isEmpty else { return }
+        let pairs = removed.map { (id: $0.id, blobs: $0.blobNames) }
+        let purge = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.undoWindow))
+            guard !Task.isCancelled else { return }
+            await self?.purgeBlobs(afterUndoWindow: pairs)
+        }
+        lastRemoval = (items: removed, purge: purge)
+    }
+
+    /// 撤销窗口结束：把这些条目真正删除（Blob 文件 + 图片缓存）。
+    /// 已经被 ⌘Z 恢复的条目还在 `items` 里，跳过——它的文件还要接着用。
+    private func purgeBlobs(afterUndoWindow pairs: [(id: ClipItem.ID, blobs: [String])]) async {
+        var names: [String] = []
+        for pair in pairs where itemsByID[pair.id] == nil {
+            names.append(contentsOf: pair.blobs)
+        }
+        guard !names.isEmpty else { return }
+        ImageCache.shared.remove(names: names)
+        await storage.removeBlobs(names)
+    }
+
+    /// 撤销最近一次删除（⌘Z）。只在撤销窗口内有效，返回是否恢复了内容。
+    @discardableResult
+    func undoLastRemoval() -> Bool {
+        guard !isErasing, let removal = lastRemoval else { return false }
+        lastRemoval = nil
+        // 文件还在：取消回收任务，重新插入记录即可原样恢复。
+        removal.purge.cancel()
+        var restored = 0
+        for item in removal.items where itemsByID[item.id] == nil {
+            items.append(item)
+            restored += 1
+        }
+        guard restored > 0 else { return false }
+        sortItems()
+        rebuildVisible()
+        notifyHistoryChanged()
+        for item in removal.items {
+            // 先排行插入，再让 prune 排删除：FIFO 保证顺序与内存一致。
+            enqueueSave { [weak self, storage] in
+                guard await storage.insert(item) else {
+                    await self?.reportSaveFailure()
+                    return
+                }
+            }
+        }
+        // 恢复后可能又超出保留上限：此时由 prune 自己删记录 + 删 Blob，
+        // 上面那条回收任务已经取消，不用再管这批文件。
+        prune()
+        rebuildVisible()
+        showToast(L("已恢复 %ld 条", restored), symbol: "arrow.uturn.backward.circle.fill")
+        return true
     }
 
     /// 保留策略改变时立即淘汰一次（设置界面里的「最多保留 / 保留时长」）。
@@ -348,6 +426,9 @@ final class ClipStore {
 
     func removeAll(keepingPinned: Bool = true) {
         guard !isErasing else { return }
+        // 清空是不可逆的批量操作：撤销只针对单条删除，这里把撤销记录一并作废。
+        lastRemoval?.purge.cancel()
+        lastRemoval = nil
         let dropped = items.filter { !(keepingPinned && $0.isPinned) }
         for item in dropped {
             searchIndex[item.id] = nil
@@ -379,6 +460,8 @@ final class ClipStore {
             showToast(L("无法清空全部数据"), symbol: "exclamationmark.triangle.fill")
             return false
         }
+        lastRemoval?.purge.cancel()
+        lastRemoval = nil
         items = []
         searchIndex = [:]
         detailCache = [:]
@@ -651,6 +734,10 @@ final class ClipStore {
         // 直接写 filterCounts[.pinned] == 0 会得到 false（nil == 0 不成立），
         // 「固定」空分类就永远不回退。
         if count(for: .pinned) == 0, filter == .pinned {
+            // 这里会经 didSet 再跑一轮 rebuildVisible（多一次重建）：代价可以接受，
+            // 递归深度固定为 1——新一轮里 filter 已经是 .all，不会再次回退。
+            // 别为了省这一轮改成「悄悄改值」：那样 visibleItems 会停留在「固定」的
+            // 空结果上，界面看着像「列表全没了」。
             filter = .all
         }
         ensureSelection()
@@ -710,9 +797,22 @@ final class ClipStore {
         let droppedIDs = dropped.map(\.id)
         let droppedBlobs = dropped.flatMap(\.blobNames)
         ImageCache.shared.remove(names: droppedBlobs)
-        enqueueSave { [storage] in
-            _ = await storage.delete(ids: droppedIDs, removingBlobs: droppedBlobs)
+        enqueueSave { [weak self, storage] in
+            guard await storage.delete(ids: droppedIDs, removingBlobs: droppedBlobs) else {
+                await self?.reportSaveFailure()
+                return
+            }
         }
+    }
+
+    /// 落库失败时给用户一个可见的反馈。
+    ///
+    /// 落库任务的返回值以前被 `_ = await` 直接丢掉：磁盘满 / 数据库损坏时内存与磁盘
+    /// 会静默分叉——被淘汰的条目重启后复活，新采集的内容则直接丢失，界面上看不出
+    /// 任何异常。这里至少提示一次，并把细节写进日志。
+    private func reportSaveFailure() {
+        Log.store.error("本地数据库写入失败，内存与磁盘可能已不一致")
+        showToast(L("本地数据库写入失败，改动可能无法保存"), symbol: "exclamationmark.triangle.fill", seconds: 5)
     }
 
     // MARK: - 落库

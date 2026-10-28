@@ -335,6 +335,13 @@ final class PanelController {
         let option = flags.contains(.option)
         let isReturn = event.keyCode == 36 || event.keyCode == 76
 
+        // 输入法正在组词（中文拼音、日文假名…）：这一段按键属于候选词编辑，
+        // 任意拦截都会变形——↓ 跳选中让候选栏错位、↩ 直接贴出去上一条。
+        // 本仓没有 markedRange 之类的手动拦截，这里统一把事件原样交给输入法。
+        if let editor = panel?.firstResponder as? NSTextView, editor.hasMarkedText() {
+            return false
+        }
+
         if option, !command, isReturn {
             coordinator.pasteSelected(plainText: true)
             return true
@@ -379,6 +386,13 @@ final class PanelController {
             return true
         case 51: // ⌘⌫
             coordinator.store.removeSelected()
+            return true
+        case 6: // ⌘Z 撤销删除
+            // 搜索框里有内容时把 ⌘Z 留给文本撤销（也避开 ⌘⇧Z 重做）。
+            guard coordinator.store.searchText.isEmpty, !flags.contains(.shift) else { return false }
+            if !coordinator.store.undoLastRemoval() {
+                coordinator.store.showToast(L("没有可撤销的删除"), symbol: "arrow.uturn.backward")
+            }
             return true
         case 43: // ⌘,
             coordinator.openSettings()

@@ -210,6 +210,12 @@ enum LocalizationSpanish {
         "已清空全部记录": "Todos los elementos borrados",
         "无法清空全部数据": "No se pudieron borrar todos los datos",
 
+        // MARK: 撤销删除
+        "已删除，⌘Z 撤销": "Eliminado · ⌘Z para deshacer",
+        "已恢复 %ld 条": "%ld elementos restaurados",
+        "没有可撤销的删除": "Nada que deshacer",
+
+        "本地数据库写入失败，改动可能无法保存": "No se pudo escribir en la base de datos local; es posible que los cambios no se guarden",
         // MARK: 快捷键显示名
         "空格": "Espacio",
         "键 %ld": "Tecla %ld",

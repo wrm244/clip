@@ -9,6 +9,12 @@ struct PreviewPane: View {
 
     /// 图片预览的悬停态：出现「可放大」角标和更亮的描边。
     @State private var imageHovering = false
+    /// 异步解码好的预览图。
+    ///
+    /// 不能在 body 里同步取图：原图动辄 4K（解码后 64MB），而预览缓存只存得下
+    /// 一两张，所以每次切条目、hover、拖窗口重算 body 都得重新全尺寸解码，主线程
+    /// 一卡一顿。现在改成 `.task(id:)` 在后台解码，解码完再刷新。
+    @State private var previewImage: NSImage?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -34,7 +40,10 @@ struct PreviewPane: View {
         .frame(maxHeight: .infinity)
         // 悬停态挂在 PreviewPane 上，切换条目不会重建它；不重置的话新图会带着上一张的
         // 角标 / 高亮描边，直到鼠标移出再进入。
-        .onChange(of: item?.id) { _, _ in imageHovering = false }
+        .onChange(of: item?.id) { _, _ in
+            imageHovering = false
+            previewImage = nil
+        }
     }
 
     private var separator: some View { ClipSeparator() }
@@ -114,7 +123,7 @@ struct PreviewPane: View {
     @ViewBuilder
     private func imageDetail(for item: ClipItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let image = ImageCache.shared.preview(for: item) {
+            if let image = previewImage {
                 // 整张图就是一个按钮：点一下弹出放大浮层（ImageLightboxController）。
                 Button {
                     coordinator.lightbox.show(item)
@@ -136,9 +145,24 @@ struct PreviewPane: View {
                 .animation(reduceMotion ? nil : .smooth(duration: 0.15), value: imageHovering)
                 .help(L("点击放大查看"))
                 .accessibilityLabel(L("放大查看图片"))
+            } else {
+                // 解码中：先占位，免得图片出现时整个预览窗高度跳一下。
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(height: 160)
+                    .overlay(ProgressView().controlSize(.small))
             }
             metaRow(L("尺寸"), "\(item.pixelWidth ?? 0) × \(item.pixelHeight ?? 0)")
             metaRow(L("体积"), ClipItem.byteText(item.byteCount))
+        }
+        // 切到别的条目 / 不再是图片时重新解码；旧任务自动取消。
+        .task(id: item.id) {
+            previewImage = nil
+            let decoded = await ImageCache.shared.previewImage(for: item)
+            // 期间已经切到别的条目：这次解码的结果不能贴上去，
+            // 否则快速按 ↓ 时会出现「上一张图闪一下」。
+            guard !Task.isCancelled else { return }
+            previewImage = decoded
         }
     }
 

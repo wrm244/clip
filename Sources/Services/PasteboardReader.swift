@@ -107,6 +107,9 @@ enum PasteboardReader {
 
     private static func readText(_ pasteboard: NSPasteboard, sourceName: String?, sourceBundleID: String?) -> ClipDraft? {
         guard let text = pasteboard.string(forType: .string) else { return nil }
+        // 先用字节数粗筛再 trim：trim 要扫一遍首尾（最坏是整串），超长文本
+        // 本来就要丢弃，没必要先为它做一次全串扫描 + 一次拷贝。
+        guard text.utf8.count <= 120_000 * 4 else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, text.count <= 120_000 else { return nil }
 

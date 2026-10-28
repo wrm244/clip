@@ -210,6 +210,12 @@ enum LocalizationFrench {
         "已清空全部记录": "Tous les éléments ont été effacés",
         "无法清空全部数据": "Impossible d’effacer toutes les données",
 
+        // MARK: 撤销删除
+        "已删除，⌘Z 撤销": "Supprimé · ⌘Z pour annuler",
+        "已恢复 %ld 条": "%ld éléments restaurés",
+        "没有可撤销的删除": "Rien à annuler",
+
+        "本地数据库写入失败，改动可能无法保存": "Écriture dans la base locale impossible ; les modifications risquent de ne pas être enregistrées",
         // MARK: 快捷键显示名
         "空格": "Espace",
         "键 %ld": "Touche %ld",

@@ -15,13 +15,13 @@
       "nav.privacy": "隐私",
       "nav.opensource": "开源",
 
-      "hero.badgeLatest": "最新版 v1.0.10",
+      "hero.badgeLatest": "最新版 v1.0.11",
       "hero.badgeOS": "macOS 27 或更高",
       "hero.title": "按一下快捷键，<br>历史就在手边。",
       "hero.sub": 'Clip 是一款常驻 macOS 菜单栏的剪贴板历史管理器。复制过的一切——文本、链接、色值、代码、图片——都安静地记着。<kbd>⇧⌘V</kbd> 随叫随到，回车即粘。',
       "hero.ctaDownload": "下载 Clip for macOS",
       "hero.ctaGithub": "GitHub 仓库",
-      "hero.ctaMeta": "Clip-1.0.10.dmg · 835 KB · 零第三方依赖 · 数据只在本机",
+      "hero.ctaMeta": "Clip-1.0.11.dmg · 852 KB · 零第三方依赖 · 数据只在本机",
       "hero.shotCaption": "主面板：分类筛选、实时计数、来源标注，向右展开预览",
 
       "chip.text": "文本",
@@ -87,7 +87,7 @@
       "dl.metaReq": "系统要求",
       "dl.metaReqVal": "macOS 27（Golden Gate）或更高",
       "dl.metaLicense": "许可",
-      "dl.btnDownload": "下载 Clip-1.0.10.dmg",
+      "dl.btnDownload": "下载 Clip-1.0.11.dmg",
       "dl.copySha": "复制 SHA-256",
       "dl.copyCmd": "复制命令",
       "dl.verify": "下载后校验：",
@@ -95,7 +95,7 @@
       "dl.note": "辅助功能授权与自签名证书绑定，更新版本后无需重新授权。卸载：退出 Clip 后删掉「应用程序」里的 Clip.app，数据目录 ~/Library/Application Support/Clip 可一并删除。",
 
       "s1.title": "下载 .dmg",
-      "s1.desc": "从 GitHub Releases 下载最新版的 Clip-1.0.10.dmg。也可以点上方按钮直接开始下载。",
+      "s1.desc": "从 GitHub Releases 下载最新版的 Clip-1.0.11.dmg。也可以点上方按钮直接开始下载。",
       "s2.title": "拖进「应用程序」",
       "s2.desc": "打开 .dmg，把 Clip 拖到「应用程序」文件夹，然后弹出镜像。",
       "s3.title": "首次启动（重要）",
@@ -141,7 +141,7 @@
       "os.linkLicense": "LICENSE",
 
       "cta.title": "让剪贴板记住该记住的",
-      "cta.sub": "835 KB，一个菜单栏小工具，和一段不用再丢的历史。",
+      "cta.sub": "852 KB，一个菜单栏小工具，和一段不用再丢的历史。",
 
       "footer.line": "纯 SwiftUI + AppKit · 零第三方依赖 · 数据只在本机",
       "footer.notApple": "与 Apple Inc. 无关联",
@@ -158,13 +158,13 @@
       "nav.privacy": "Privacy",
       "nav.opensource": "Open Source",
 
-      "hero.badgeLatest": "Latest v1.0.10",
+      "hero.badgeLatest": "Latest v1.0.11",
       "hero.badgeOS": "macOS 27 or later",
       "hero.title": "One shortcut away,<br>your whole history.",
       "hero.sub": 'Clip is a menu-bar clipboard history manager for macOS. Everything you copy — text, links, color values, code, images — is quietly remembered. Hit <kbd>⇧⌘V</kbd> anytime, press Return to paste.',
       "hero.ctaDownload": "Download Clip for macOS",
       "hero.ctaGithub": "GitHub Repo",
-      "hero.ctaMeta": "Clip-1.0.10.dmg · 835 KB · Zero dependencies · Stays on your Mac",
+      "hero.ctaMeta": "Clip-1.0.11.dmg · 852 KB · Zero dependencies · Stays on your Mac",
       "hero.shotCaption": "The panel: category filters, live counts, source tags, preview on the right",
 
       "chip.text": "Text",
@@ -230,7 +230,7 @@
       "dl.metaReq": "Requires",
       "dl.metaReqVal": "macOS 27 (Golden Gate) or later",
       "dl.metaLicense": "License",
-      "dl.btnDownload": "Download Clip-1.0.10.dmg",
+      "dl.btnDownload": "Download Clip-1.0.11.dmg",
       "dl.copySha": "Copy SHA-256",
       "dl.copyCmd": "Copy command",
       "dl.verify": "Verify after download:",
@@ -238,7 +238,7 @@
       "dl.note": "Accessibility permission is tied to the self-signed certificate, so it survives updates. To uninstall: quit Clip, delete Clip.app from Applications, and optionally remove ~/Library/Application Support/Clip.",
 
       "s1.title": "Download the .dmg",
-      "s1.desc": "Grab the latest Clip-1.0.10.dmg from GitHub Releases — or just hit the download button on the left.",
+      "s1.desc": "Grab the latest Clip-1.0.11.dmg from GitHub Releases — or just hit the download button on the left.",
       "s2.title": "Drag to Applications",
       "s2.desc": "Open the .dmg and drag Clip into the Applications folder, then eject the image.",
       "s3.title": "First launch (important)",
@@ -284,7 +284,7 @@
       "os.linkLicense": "LICENSE",
 
       "cta.title": "Let your clipboard keep what matters",
-      "cta.sub": "835 KB. One little menu-bar tool, and a history you'll never lose again.",
+      "cta.sub": "852 KB. One little menu-bar tool, and a history you'll never lose again.",
 
       "footer.line": "Pure SwiftUI + AppKit · Zero dependencies · Data stays local",
       "footer.notApple": "Not affiliated with Apple Inc.",

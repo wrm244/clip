@@ -19,13 +19,13 @@ struct ClipEntry: TimelineEntry {
 
 struct ClipProvider: TimelineProvider {
     func placeholder(in context: Context) -> ClipEntry {
-        ClipEntry(date: .now, language: "zh-Hans", items: WidgetFeedItem.placeholders, linkToken: nil)
+        ClipEntry(date: .now, language: WidgetText.systemLanguage, items: WidgetFeedItem.placeholders, linkToken: nil)
     }
 
     func getSnapshot(in context: Context, completion: @escaping @Sendable (ClipEntry) -> Void) {
         // 画廊 / 快照场景给样例数据，避免空态看起来像坏了。
         if context.isPreview {
-            completion(ClipEntry(date: .now, language: "zh-Hans", items: WidgetFeedItem.placeholders, linkToken: nil))
+            completion(ClipEntry(date: .now, language: WidgetText.systemLanguage, items: WidgetFeedItem.placeholders, linkToken: nil))
         } else {
             completion(currentEntry())
         }
@@ -43,7 +43,9 @@ struct ClipProvider: TimelineProvider {
         let feed = WidgetFeed.load()
         return ClipEntry(
             date: .now,
-            language: feed?.language ?? "zh-Hans",
+            // 主 App 还没写过快照（首次添加小组件 / 刚升级）时按系统语言显示，
+            // 别让非中文用户先看到一屏中文。
+            language: feed?.language ?? WidgetText.systemLanguage,
             items: feed?.items ?? [],
             linkToken: WidgetFeed.readURLToken()
         )
@@ -302,6 +304,9 @@ private struct ClipWidgetRow<Thumb: View>: View {
 /// 语言码归一化与主 App 的 `Localization.systemLanguage()` 保持同一套规则，
 /// 认识的语言之外回退英文。
 enum WidgetText {
+    /// 系统首选语言（BCP-47）。主 App 还没写快照时用它兜底。
+    static let systemLanguage: String = Locale.preferredLanguages.first ?? "en"
+
     /// 把快照里的 BCP-47 语言码归一化成文案表的 key。
     private static func code(_ language: String) -> String {
         if language.hasPrefix("zh-Hant") || language.hasPrefix("zh-TW")

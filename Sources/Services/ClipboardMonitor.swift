@@ -10,6 +10,13 @@ final class ClipboardMonitor {
     private var lastChangeCount: Int
     /// 前台应用是 Clip 自己时的重试计数，避免误判导致漏采。
     private var deferralCount = 0
+    /// 延后重试期间已解析好的草稿，配它对应的 changeCount。
+    ///
+    /// 重试每 0.4s 一次、最多 25 次；以前每轮都重新 `PasteboardReader.read`，
+    /// 而一次大图解析就是几百 MB 的拷贝（最多 25 遍，全在主线程）。changeCount
+    /// 没变就说明内容没变，解析一次留住就够。
+    private var deferredDraft: ClipDraft?
+    private var deferredChangeCount: Int?
     /// 采集任务队列。多个 changeCount 事件必须按观察到顺序提交，否则两个内容的
     /// 哈希任务完成顺序不同，会让旧内容反而成为“最近使用”。
     private var ingestTask: Task<Void, Never>?
@@ -74,11 +81,24 @@ final class ClipboardMonitor {
             // 但这是临时状态，稍后重试几次，避免把真正来自其他应用的内容漏掉。
             if clipIsFrontmost {
                 deferralCount += 1
-                if deferralCount < 25 { return }
+                if deferralCount < 25 {
+                    // 只解析一次：changeCount 没变，内容就是同一份。
+                    if deferredChangeCount != changeCount {
+                        deferredDraft = PasteboardReader.read(pasteboard, maxItemBytes: settings.maxItemBytes)
+                        deferredChangeCount = changeCount
+                    }
+                    return
+                }
             }
-            if let draft = PasteboardReader.read(pasteboard, maxItemBytes: settings.maxItemBytes) {
+            // 重试到最后一轮（或面板已收起）：有同 changeCount 的现成草稿就直接用。
+            let draft = deferredChangeCount == changeCount
+                ? deferredDraft
+                : PasteboardReader.read(pasteboard, maxItemBytes: settings.maxItemBytes)
+            if let draft {
                 lastChangeCount = changeCount
                 deferralCount = 0
+                deferredDraft = nil
+                deferredChangeCount = nil
                 Log.monitor.debug("采集到 \(draft.kind.rawValue, privacy: .public) 内容，\(draft.byteCount) 字节")
                 enqueueIngest(draft)
                 return
@@ -89,6 +109,8 @@ final class ClipboardMonitor {
         }
 
         deferralCount = 0
+        deferredDraft = nil
+        deferredChangeCount = nil
         lastChangeCount = changeCount
     }
 

@@ -66,8 +66,6 @@ struct FilterChip: View {
     var compact: Bool = false
     let action: () -> Void
 
-    @State private var isHovering = false
-
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
@@ -90,9 +88,10 @@ struct FilterChip: View {
         }
         .buttonStyle(.plain)
         .focusEffectDisabled()
-        .foregroundStyle(isSelected ? Color.white : Color.primary)
+        // 选中态用系统给「强调色背景上的文字」准备的颜色，而不是写死的白色：
+        // 浅色外观 + 降低透明度时强调色可能是浅黄/浅粉，白字会糊成一片。
+        .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : Color.primary)
         .clipGlass(.capsule, tint: isSelected ? Color.accentColor : nil, interactive: true)
-        .onHover { isHovering = $0 }
         .animation(.snappy(duration: 0.18), value: isSelected)
     }
 }

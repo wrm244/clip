@@ -12,6 +12,19 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh-Hans</string>
+		<string>zh-Hant</string>
+		<string>en</string>
+		<string>ja</string>
+		<string>ko</string>
+		<string>fr</string>
+		<string>es</string>
+		<string>hi</string>
+		<string>ar</string>
+		<string>bn</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>Clip</string>
 	<key>CFBundlePackageType</key>

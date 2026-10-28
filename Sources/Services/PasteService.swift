@@ -44,14 +44,16 @@ final class PasteService {
             }
         }
         let keyV: CGKeyCode = 9
-        if let down = CGEvent(keyboardEventSource: source, virtualKey: keyV, keyDown: true) {
-            down.flags = .maskCommand
-            down.post(tap: .cghidEventTap)
+        // 两个事件都要建：只发出去按下、没发抬起的话，目标应用会一直以为自己按着 ⌘V。
+        guard let down = CGEvent(keyboardEventSource: source, virtualKey: keyV, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: keyV, keyDown: false) else {
+            Log.panel.error("无法创建 ⌘V 键盘事件（辅助功能权限可能刚被撤销），已跳过模拟按键")
+            return false
         }
-        if let up = CGEvent(keyboardEventSource: source, virtualKey: keyV, keyDown: false) {
-            up.flags = .maskCommand
-            up.post(tap: .cghidEventTap)
-        }
+        down.flags = .maskCommand
+        down.post(tap: .cghidEventTap)
+        up.flags = .maskCommand
+        up.post(tap: .cghidEventTap)
         return true
     }
 }

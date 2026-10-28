@@ -18,6 +18,9 @@ final class AppCoordinator {
     /// 图片放大浮层：点击预览面板里的图片 → 屏幕中央的大图。
     let lightbox: ImageLightboxController
 
+    /// 粘贴进行中。防止连按 / 按住 ↩ 时并发的两次粘贴把剪贴板写乱，见 `paste(_:plainText:)`。
+    @ObservationIgnored private var isPasting = false
+
     private init() {
         let settings = ClipSettings()
         let store = ClipStore(settings: settings)
@@ -138,8 +141,16 @@ final class AppCoordinator {
     // MARK: 粘贴
 
     /// 粘贴：写回剪贴板，关闭面板，必要时模拟 ⌘V。
+    ///
+    /// 一次粘贴要 await 几次（写剪贴板、激活目标应用、发按键），中间任何一次都会让出
+    /// 主线程。按住 / 连按 ↩ 时会有第二个 paste 跟着进来，两边各自 clearContents + ⌘V，
+    /// 最终贴出去的可能是「上一条」——用户看到的是回车没反应、或者内容错位。
+    /// 这里用一个串行闸门把并发的第二次按下去。
     func paste(_ item: ClipItem, plainText: Bool = false) {
+        guard !isPasting else { return }
+        isPasting = true
         Task {
+            defer { isPasting = false }
             guard await PasteboardWriter.write(item, plainText: plainText) else {
                 store.showToast(L("内容已不存在，无法粘贴"), symbol: "exclamationmark.triangle.fill")
                 return

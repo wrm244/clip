@@ -63,6 +63,7 @@ Sélectionnez une entrée et appuyez sur <kbd>→</kbd> pour dérouler l'aperçu
 | <kbd>⌘1</kbd>–<kbd>⌘9</kbd> | Coller directement la Nᵉ entrée |
 | <kbd>⌘P</kbd> | Épingler / détacher |
 | <kbd>⌘⌫</kbd> | Supprimer l'entrée sélectionnée |
+| <kbd>⌘Z</kbd> | Annuler la dernière suppression (sous 20 secondes) |
 | <kbd>esc</kbd> | Refermer le panneau |
 
 ### Également dans la barre des menus

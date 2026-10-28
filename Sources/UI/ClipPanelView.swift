@@ -15,6 +15,8 @@ struct ClipPanelView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @FocusState private var searchFocused: Bool
+    /// 在途的「延迟夺焦」任务：重复触发时只留最新的那个。
+    @State private var focusTask: Task<Void, Never>?
 
     /// 展开进度：0 = 完全收起，1 = 完全展开。
     ///
@@ -291,11 +293,21 @@ struct ClipPanelView: View {
         }
     }
 
+    /// 把焦点交给搜索框。
+    ///
+    /// 面板刚 show 出来时窗口还不是 key，SwiftUI 此时的 focus 请求会被丢掉，
+    /// 所以要让主线程先跑一轮再设。两条触发路径（onAppear / isVisible 变化）会
+    /// 前后脚各调一次，以前每次各起一个不可取消的 50ms 任务：后起的那个把状态
+    /// 设成 false，先起的那个 50ms 后又被设成 true——用户刚好在这期间开始输入，
+    /// 第一个字符就掉在「刚被重置」的空档里。这里只保留最新一个在途任务。
     private func focusSearch() {
+        focusTask?.cancel()
         searchFocused = false
-        Task { @MainActor in
+        focusTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
             searchFocused = true
+            focusTask = nil
         }
     }
 }

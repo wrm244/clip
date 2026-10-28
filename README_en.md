@@ -63,6 +63,7 @@ Select an entry and press <kbd>→</kbd> to expand the preview to the right. The
 | <kbd>⌘1</kbd>–<kbd>⌘9</kbd> | Paste the Nth entry directly |
 | <kbd>⌘P</kbd> | Pin / unpin |
 | <kbd>⌘⌫</kbd> | Delete the selected entry |
+| <kbd>⌘Z</kbd> | Undo the last delete (within 20 seconds) |
 | <kbd>esc</kbd> | Dismiss the panel |
 
 ### Also in the menu bar

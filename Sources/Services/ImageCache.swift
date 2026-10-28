@@ -1,6 +1,13 @@
 import AppKit
+import ImageIO
 
-/// 缩略图 / 预览图的内存缓存。图片文件本身很小，同步读盘即可，避免每个行视图都做异步状态机。
+/// 后台解码的结果包装。NSImage / CGImage 都不是 Sendable，但这里搬运的是一个已经
+/// 解码完成、之后只读的位图，跨线程传引用是安全的。
+private struct DecodedImage: @unchecked Sendable {
+    let image: NSImage?
+}
+
+/// 缩略图 / 预览图的内存缓存。缩略图文件本身很小，同步读盘即可，避免每个行视图都做异步状态机。
 final class ImageCache {
     static let shared = ImageCache()
 
@@ -22,10 +29,40 @@ final class ImageCache {
         return image(named: name, in: thumbnails, fallback: item.imageBlob)
     }
 
-    /// 预览面板里的大图。
+    /// 预览面板里的大图（同步）。只给一次性的点击场景用（放大浮层）。
+    /// 预览窗格跟着选中项切换，必须走 `previewImage(for:)`。
     func preview(for item: ClipItem) -> NSImage? {
         guard let name = item.imageBlob else { return nil }
         return image(named: name, in: previews, fallback: nil)
+    }
+
+    /// 预览窗格用：解码放后台线程。
+    ///
+    /// 原图动辄 4K（解码后 64MB），在 SwiftUI body 里同步解码会让切换条目、
+    /// hover、拖窗口都卡一下；而预览缓存最多只存得下 1~2 张，所以每次换条目
+    /// 都会重新解码。这里在后台用 ImageIO 解成 CGImage，再回主线程包成 NSImage。
+    func previewImage(for item: ClipItem) async -> NSImage? {
+        guard let name = item.imageBlob, let url = ClipStorage.shared.blobURL(named: name) else { return nil }
+        if let cached = previews.object(forKey: name as NSString) { return cached }
+        let boxed = await Task.detached(priority: .userInitiated) {
+            Self.decodeImage(at: url)
+        }.value
+        guard let image = boxed.image else { return nil }
+        set(image, in: previews, key: name)
+        return image
+    }
+
+    /// 在后台线程把文件解码成位图并包成 NSImage（不留惰性解码到主线程）。
+    private nonisolated static func decodeImage(at url: URL) -> DecodedImage {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return DecodedImage(image: nil) }
+        // ShouldCacheImmediately：解码就在这次调用里做完，不让它拖到主线程绘图时。
+        let options: [CFString: Any] = [kCGImageSourceShouldCacheImmediately: true]
+        guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, options as CFDictionary) else {
+            return DecodedImage(image: nil)
+        }
+        return DecodedImage(
+            image: NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        )
     }
 
     private func image(named name: String, in cache: NSCache<NSString, NSImage>, fallback: String?) -> NSImage? {
@@ -38,7 +75,9 @@ final class ImageCache {
         if let fallback,
            let url = ClipStorage.shared.blobURL(named: fallback),
            let image = NSImage(contentsOf: url) {
-            set(image, in: cache, key: name)
+            // 兜底图是全尺寸原图：只返回、不按缩略图的 key 入缓存。
+            // 按原图像素计费的一条就能把 48MB 的缩略图预算吃穿，把真正的缩略图
+            // 全部挤掉，于是整个列表下一帧集体重新解码。
             return image
         }
         return nil

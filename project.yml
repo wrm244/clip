@@ -73,8 +73,8 @@ targets:
       base:
         PRODUCT_NAME: Clip
         PRODUCT_BUNDLE_IDENTIFIER: com.river.Clip
-        MARKETING_VERSION: "1.0.10"
-        CURRENT_PROJECT_VERSION: "12"
+        MARKETING_VERSION: "1.0.11"
+        CURRENT_PROJECT_VERSION: "13"
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
@@ -96,6 +96,20 @@ targets:
         NSSupportsAutomaticTermination: false
         NSSupportsSuddenTermination: false
         NSHumanReadableCopyright: "Copyright © 2026 River. All rights reserved."
+        # 应用内语言（Localization）与系统语言是两套东西，但这里列出来有两个作用：
+        # 让「系统设置 → 语言与地区 → 应用」里能单独给 Clip 选语言，
+        # 也让 system_profiler / 分发工具看到真实支持的语言数量。
+        CFBundleLocalizations:
+          - zh-Hans
+          - zh-Hant
+          - en
+          - ja
+          - ko
+          - fr
+          - es
+          - hi
+          - ar
+          - bn
         CFBundleURLTypes:
           - CFBundleURLName: com.river.Clip
             CFBundleURLSchemes:
@@ -120,8 +134,8 @@ targets:
       base:
         PRODUCT_NAME: ClipWidget
         PRODUCT_BUNDLE_IDENTIFIER: com.river.Clip.Widget
-        MARKETING_VERSION: "1.0.10"
-        CURRENT_PROJECT_VERSION: "12"
+        MARKETING_VERSION: "1.0.11"
+        CURRENT_PROJECT_VERSION: "13"
         SKIP_INSTALL: YES
         APPLICATION_EXTENSION_API_ONLY: YES
         CODE_SIGN_ENTITLEMENTS: Widget/ClipWidget.entitlements

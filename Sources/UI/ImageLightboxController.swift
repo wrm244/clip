@@ -293,6 +293,10 @@ final class ImageLightboxController {
             guard let self else { return event }
             if event.type == .keyDown {
                 guard event.keyCode == 53 else { return event }
+                // 只处理落在浮层自己身上的 esc（event.window 为 nil 时也算：菜单追踪等
+                // 没有窗口归属的按键）。以前一律吞掉，用户在设置窗口里按 esc 想取消
+                // 编辑时，浮层被关掉、按键也被吃掉，两件事一起发生。
+                guard event.window == nil || event.window === self.window else { return event }
                 self.dismiss()
                 return nil
             }

@@ -210,6 +210,12 @@ enum LocalizationEnglish {
         "已清空全部记录": "Cleared all items",
         "无法清空全部数据": "Couldn't clear all data",
 
+        // MARK: 撤销删除
+        "已删除，⌘Z 撤销": "Deleted · ⌘Z to undo",
+        "已恢复 %ld 条": "Restored %ld items",
+        "没有可撤销的删除": "Nothing to undo",
+
+        "本地数据库写入失败，改动可能无法保存": "Couldn't write to the local database; changes may not be saved",
         // MARK: 快捷键显示名
         "空格": "Space",
         "键 %ld": "Key %ld",
