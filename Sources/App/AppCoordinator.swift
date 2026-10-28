@@ -21,6 +21,12 @@ final class AppCoordinator {
     /// 粘贴进行中。防止连按 / 按住 ↩ 时并发的两次粘贴把剪贴板写乱，见 `paste(_:plainText:)`。
     @ObservationIgnored private var isPasting = false
 
+    /// 列表行的「双击」判定状态：上一次被单击的条目与时刻。
+    ///
+    /// 放在协调者上（而不是每行自己的 @State）：双击的语义是「连着点同一条」，
+    /// 判定状态必须跨行共享，否则「点 A、再快速点 B」会把 B 判成双击直接粘出去。
+    @ObservationIgnored var lastTap: (id: ClipItem.ID, at: Date)?
+
     private init() {
         let settings = ClipSettings()
         let store = ClipStore(settings: settings)

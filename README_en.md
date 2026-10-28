@@ -33,7 +33,7 @@ No window docked to the side, no tabs, no having to remember where you put somet
 
 ### Remembers everything
 
-Text, links, color values, code, file paths, images — whatever you copy, Clip keeps it, tagged with the app it came from.
+Text, links, color values, code, file paths, images — whatever you copy, Clip keeps it, tagged with the app it came from (with the app's icon).
 
 <p align="center">
   <img src="docs/img/剪切板1.png" width="820" alt="Type detection and preview">
@@ -80,7 +80,7 @@ A Notification Center / desktop widget shows your most recent entries. Click one
 
 ### Find the one you need
 
-The search box at the top filters as you type. Entries you've pinned (<kbd>⌘P</kbd>) are never cleaned up automatically, so parameters, URLs and snippets you use constantly can stay within reach indefinitely.
+The search box at the top filters as you type, and **the matched characters are highlighted in each title** so you can see at a glance why an entry turned up. Entries you've pinned (<kbd>⌘P</kbd>) are never cleaned up automatically, so parameters, URLs and snippets you use constantly can stay within reach indefinitely.
 
 ## Install
 

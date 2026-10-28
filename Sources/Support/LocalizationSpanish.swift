@@ -213,6 +213,7 @@ enum LocalizationSpanish {
         // MARK: 撤销删除
         "已删除，⌘Z 撤销": "Eliminado · ⌘Z para deshacer",
         "已恢复 %ld 条": "%ld elementos restaurados",
+        "历史库打开失败：本次运行的记录不会保存": "No se pudo abrir la base del historial: las entradas de esta sesión no se guardarán",
         "没有可撤销的删除": "Nada que deshacer",
 
         "本地数据库写入失败，改动可能无法保存": "No se pudo escribir en la base de datos local; es posible que los cambios no se guarden",

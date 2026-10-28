@@ -11,14 +11,13 @@ struct ClipRowView: View {
     let rowHeight: CGFloat
 
     @State private var isHovering = false
-    /// 上一次单击的时间，用来自己识别双击（见 `handleTap`）。
-    @State private var lastTapAt: Date?
 
     var body: some View {
         HStack(spacing: 11) {
             leading
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
+                // 搜索命中的片段高亮：用户不用再逐字比对「为什么这一条被命中」。
+                Text(SearchHighlight.attributed(item.title, keywords: coordinator.store.highlightKeywords))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -47,12 +46,18 @@ struct ClipRowView: View {
     /// 默认 0.5s，就是「点了半秒才选中」的来源）。
     /// 现在只用单击手势（识别即触发，不等待），双击由时间判定补上，语义不变。
     private func handleTap() {
+        // 双击判定状态存在协调者上，不是每行自己的 @State：
+        // 每行各记一份时，「点 A、再快速点 B」会让 B 用自己上次被点的时间
+        // 误判成双击（两次点不同行也一样会命中），没怎么扫过列表的用户就会
+        // 因为随手两下点击就把某一条直接粘到前台应用里。
         let now = Date()
-        if let lastTapAt, now.timeIntervalSince(lastTapAt) <= NSEvent.doubleClickInterval {
-            self.lastTapAt = nil
+        if let last = coordinator.lastTap,
+           last.id == item.id,
+           now.timeIntervalSince(last.at) <= NSEvent.doubleClickInterval {
+            coordinator.lastTap = nil
             coordinator.paste(item)
         } else {
-            lastTapAt = now
+            coordinator.lastTap = (id: item.id, at: now)
             coordinator.store.selectedID = item.id
         }
     }
@@ -102,6 +107,16 @@ struct ClipRowView: View {
             Text(coordinator.store.detail(for: item))
             if showSource, let source = item.sourceName {
                 Text("·")
+                // 应用图标比名字更快被认出来；取不到图标（例如来源应用已卸载）时
+                // 只显示文字，绝不为了一个图标去阻塞或占位。
+                if let icon = SourceAppIcon.icon(forBundleID: item.sourceBundleID) {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 12, height: 12)
+                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                        .accessibilityHidden(true)
+                }
                 Text(source)
             }
         }

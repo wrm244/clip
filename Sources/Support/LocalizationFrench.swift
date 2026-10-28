@@ -213,6 +213,7 @@ enum LocalizationFrench {
         // MARK: 撤销删除
         "已删除，⌘Z 撤销": "Supprimé · ⌘Z pour annuler",
         "已恢复 %ld 条": "%ld éléments restaurés",
+        "历史库打开失败：本次运行的记录不会保存": "Impossible d’ouvrir la base de l’historique : les entrées de cette session ne seront pas enregistrées",
         "没有可撤销的删除": "Rien à annuler",
 
         "本地数据库写入失败，改动可能无法保存": "Écriture dans la base locale impossible ; les modifications risquent de ne pas être enregistrées",

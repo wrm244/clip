@@ -33,7 +33,7 @@ Aucune fenêtre attenante, aucun onglet, pas besoin de se souvenir où l'on a ra
 
 ### Tout retient
 
-Du texte, des liens, des valeurs de couleur, du code, des chemins de fichiers, des images — tout ce que vous copiez est conservé, avec l'application d'origine en étiquette.
+Du texte, des liens, des valeurs de couleur, du code, des chemins de fichiers, des images — tout ce que vous copiez est conservé, avec l'application d'origine en étiquette (icône comprise).
 
 <p align="center">
   <img src="docs/img/剪切板1.png" width="820" alt="Détection du type et aperçu">
@@ -80,7 +80,7 @@ Un widget pour le Centre de notifications / le Bureau affiche vos entrées réce
 
 ### Trouver la bonne entrée
 
-Le champ de recherche en haut filtre au fur et à mesure de la frappe. Les entrées épinglées (<kbd>⌘P</kbd>) ne sont jamais nettoyées automatiquement : paramètres, URLs et extraits d'usage courant restent à portée de main.
+Le champ de recherche en haut filtre au fur et à mesure de la frappe, et **les caractères correspondants sont surlignés dans le titre** : on voit d'un coup d'œil pourquoi une entrée ressort. Les entrées épinglées (<kbd>⌘P</kbd>) ne sont jamais nettoyées automatiquement : paramètres, URLs et extraits d'usage courant restent à portée de main.
 
 ## Installation
 

@@ -54,26 +54,6 @@ nonisolated final class ClipRecord {
         contentHash = item.contentHash
     }
 
-    /// 用 DTO 覆盖除 id 外的全部字段。
-    func update(from item: ClipItem) {
-        kindRaw = item.kind.rawValue
-        text = item.text
-        rtfBlob = item.rtfBlob
-        imageBlob = item.imageBlob
-        thumbBlob = item.thumbBlob
-        pixelWidth = item.pixelWidth
-        pixelHeight = item.pixelHeight
-        filePaths = item.filePaths
-        byteCount = item.byteCount
-        createdAt = item.createdAt
-        lastUsedAt = item.lastUsedAt
-        useCount = item.useCount
-        isPinned = item.isPinned
-        sourceName = item.sourceName
-        sourceBundleID = item.sourceBundleID
-        contentHash = item.contentHash
-    }
-
     /// 转回内存 DTO。kindRaw 解不出来时兜底为文本类型。
     var dto: ClipItem {
         ClipItem(

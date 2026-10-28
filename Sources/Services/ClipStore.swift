@@ -26,6 +26,9 @@ final class ClipStore {
     private(set) var visibleItems: [ClipItem] = []
     /// 各分类的条目数，随列表变化一次性算好。
     private(set) var filterCounts: [ClipFilter: Int] = [:]
+    /// 当前搜索词（小写、已分词），供列表行做命中高亮。
+    /// 与 `visibleItems` 同一次重建里更新，保证「高亮的词」与「命中的结果」口径一致。
+    private(set) var highlightKeywords: [String] = []
 
     var searchText: String = "" {
         didSet { if searchText != oldValue { scheduleSearchRebuild() } }
@@ -123,6 +126,16 @@ final class ClipStore {
         // 否则一次暂时性 I/O 故障就会把整份历史连同图片文件全部删光。
         guard let loaded = await storage.fetchAllItems() else {
             Log.store.fault("历史读取失败，本次运行以空列表运行，不执行任何清理")
+            // 内存回退时磁盘上的历史仍在，但本次运行写下的东西退出即丢。
+            // 不提示的话，用户看到的只是「历史突然空了」，而界面里还有
+            // 「清空全部数据」按钮等着把这个误会变成事实。
+            if storage.isEphemeralFallback {
+                showToast(
+                    L("历史库打开失败：本次运行的记录不会保存"),
+                    symbol: "exclamationmark.triangle.fill",
+                    seconds: 8
+                )
+            }
             rebuildVisible()
             return
         }
@@ -369,6 +382,12 @@ final class ClipStore {
     /// 撤销窗口结束：把这些条目真正删除（Blob 文件 + 图片缓存）。
     /// 已经被 ⌘Z 恢复的条目还在 `items` 里，跳过——它的文件还要接着用。
     private func purgeBlobs(afterUndoWindow pairs: [(id: ClipItem.ID, blobs: [String])]) async {
+        // 窗口已过：这一批的撤销记录同时作废。不作废的话，几分钟后按 ⌘Z 会把
+        // 记录插回内存与数据库，但它指向的 Blob 文件刚刚才被删掉——列表里是一个
+        // 没有缩略图的空壳，粘贴时只会报「内容已不存在」。
+        if let pending = lastRemoval, Set(pending.items.map(\.id)) == Set(pairs.map(\.id)) {
+            lastRemoval = nil
+        }
         var names: [String] = []
         for pair in pairs where itemsByID[pair.id] == nil {
             names.append(contentsOf: pair.blobs)
@@ -385,16 +404,18 @@ final class ClipStore {
         lastRemoval = nil
         // 文件还在：取消回收任务，重新插入记录即可原样恢复。
         removal.purge.cancel()
-        var restored = 0
+        var restoredItems: [ClipItem] = []
         for item in removal.items where itemsByID[item.id] == nil {
             items.append(item)
-            restored += 1
+            restoredItems.append(item)
         }
-        guard restored > 0 else { return false }
+        guard !restoredItems.isEmpty else { return false }
         sortItems()
         rebuildVisible()
         notifyHistoryChanged()
-        for item in removal.items {
+        // 只给真正插回列表的条目排队落库：被跳过的那些已在库里，再 insert 一次会
+        // 撞唯一约束，白白弹一条「保存失败」提示。
+        for item in restoredItems {
             // 先排行插入，再让 prune 排删除：FIFO 保证顺序与内存一致。
             enqueueSave { [weak self, storage] in
                 guard await storage.insert(item) else {
@@ -407,7 +428,7 @@ final class ClipStore {
         // 上面那条回收任务已经取消，不用再管这批文件。
         prune()
         rebuildVisible()
-        showToast(L("已恢复 %ld 条", restored), symbol: "arrow.uturn.backward.circle.fill")
+        showToast(L("已恢复 %ld 条", restoredItems.count), symbol: "arrow.uturn.backward.circle.fill")
         return true
     }
 
@@ -715,6 +736,9 @@ final class ClipStore {
     /// 可见列表算好后统一收尾：更新下标的索引、分类计数、选中项。
     private func finishRebuild() {
         reindexVisible()
+        // 高亮用的关键词和本次匹配用的是同一份分词结果（`normalizedKeywords` 是纯函数，
+        // 重算一次远比把它一路传进异步搜索链要省事，也不会出现两份口径）。
+        highlightKeywords = normalizedKeywords(searchText).map { String($0) }
         // 各分类计数一次遍历统计（原来是每个分类各 filter 一遍，7 次 O(n)）
         var counts = [ClipFilter: Int]()
         counts.reserveCapacity(ClipFilter.allCases.count)

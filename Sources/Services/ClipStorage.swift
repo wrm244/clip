@@ -192,28 +192,6 @@ actor ClipStorage {
         return save(context, operation: "写入")
     }
 
-    @discardableResult
-    func update(_ item: ClipItem) -> Bool {
-        let context = self.context
-        let id = item.id
-        var descriptor = FetchDescriptor<ClipRecord>(predicate: #Predicate { $0.id == id })
-        // id 唯一，最多命中一条；加 fetchLimit 免得查询层再扫全表。
-        descriptor.fetchLimit = 1
-        do {
-            if let record = try context.fetch(descriptor).first {
-                record.update(from: item)
-            } else {
-                // 内存里有、库里没有（例如上次写库失败）：补插一条，保持两侧一致。
-                context.insert(ClipRecord(item))
-            }
-            return save(context, operation: "更新")
-        } catch {
-            Log.store.error("更新记录失败：\(String(describing: error), privacy: .public)")
-            context.rollback()
-            return false
-        }
-    }
-
     /// 只更新使用状态字段。`markUsed` / `bump` / `togglePin` 不改变正文、
     /// 文件路径或富文本，避免每次粘贴都把大条目的全文/路径数组重新写一遍。
     @discardableResult

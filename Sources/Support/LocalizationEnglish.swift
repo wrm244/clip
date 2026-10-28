@@ -213,6 +213,7 @@ enum LocalizationEnglish {
         // MARK: 撤销删除
         "已删除，⌘Z 撤销": "Deleted · ⌘Z to undo",
         "已恢复 %ld 条": "Restored %ld items",
+        "历史库打开失败：本次运行的记录不会保存": "History database could not be opened: entries from this session won't be saved",
         "没有可撤销的删除": "Nothing to undo",
 
         "本地数据库写入失败，改动可能无法保存": "Couldn't write to the local database; changes may not be saved",

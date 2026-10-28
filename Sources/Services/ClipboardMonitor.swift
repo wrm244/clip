@@ -32,7 +32,10 @@ final class ClipboardMonitor {
 
     func start() {
         guard timer == nil else { return }
-        lastChangeCount = NSPasteboard.general.changeCount
+        // 不在这里重置 `lastChangeCount`：`start()` 是在 `store.load()` 之后调用的，
+        // 历史越大这个窗口越长；如果此刻把当前值记成「已处理」，用户在这段时间里
+        // 复制的东西就会被当成没有变化而永远漏采。`init` 里已经拍过一次快照，
+        // 从那时到现在的内容变化就该补采。
         // 用未调度的 Timer 再手动加入 .common 模式：
         // 之前是 scheduledTimer（已加入 .default）又 add(.common)，同一个定时器
         // 被登记两次；改为只登记一次，意图也更清楚（.common 能在菜单追踪 /

@@ -136,6 +136,11 @@ final class ImageLightboxController {
     /// 打开时刻：点击关闭的宽限期以它为基准。
     private var openedAt: Date = .distantPast
     private(set) var isVisible = false
+    /// 本次打开请求的代数。异步解码回来时对不上就丢弃：用户已经关了浮层
+    /// 或者又点了别的图，旧结果不能再弹出来。
+    private var presentationToken: UInt64 = 0
+    /// 当前显示的是缩略图占位（原图还在后台解码）。
+    private var isProvisional = false
 
     func attach(coordinator: AppCoordinator) {
         self.coordinator = coordinator
@@ -154,8 +159,42 @@ final class ImageLightboxController {
     // MARK: - 显示
 
     func show(_ item: ClipItem) {
-        guard item.kind == .image, let coordinator else { return }
-        guard let image = ImageCache.shared.preview(for: item) else { return }
+        guard item.kind == .image, coordinator != nil else { return }
+        presentationToken &+= 1
+        let token = presentationToken
+
+        // 命中缓存（刚在预览窗里看过的那张）就直接开窗。
+        if let image = ImageCache.shared.preview(for: item) {
+            isProvisional = false
+            present(item: item, image: image)
+            return
+        }
+
+        // 没命中：原图动辄 4K，同步解码要几十毫秒，而这段正好撞在「点击 → 面板收、
+        // 浮层淡入」的动画上，看起来就是鼠标松开后卡一下。改成先用缩略图占位开窗，
+        // 后台解码完再换成原图（同一个窗口、只换内容，不重播淡入）。
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if let placeholder = ImageCache.shared.thumbnail(for: item) {
+                guard self.presentationToken == token else { return }
+                self.isProvisional = true
+                self.present(item: item, image: placeholder)
+            }
+            let decoded = await ImageCache.shared.previewImage(for: item)
+            guard self.presentationToken == token else { return }
+            guard let decoded else {
+                // 解码失败：占位窗还开着就收掉，不留一个空白浮层。
+                if self.isProvisional { self.dismiss() }
+                return
+            }
+            self.isProvisional = false
+            self.present(item: item, image: decoded)
+        }
+    }
+
+    /// 真正开窗 / 换图。
+    private func present(item: ClipItem, image: NSImage) {
+        guard let coordinator else { return }
 
         let screen = coordinator.panel.currentScreen ?? NSScreen.main
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
@@ -253,6 +292,9 @@ final class ImageLightboxController {
     func dismiss() {
         let wasVisible = isVisible
         isVisible = false
+        // 让还在解码的打开请求作废：关掉之后不该再因为解码完成把窗口弹回来。
+        presentationToken &+= 1
+        isProvisional = false
         removeMonitor()
         if let window {
             window.orderOut(nil)

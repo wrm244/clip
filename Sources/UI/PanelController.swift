@@ -385,6 +385,9 @@ final class PanelController {
             setPreview(!coordinator.store.previewVisible)
             return true
         case 51: // ⌘⌫
+            // 搜索框里有内容时把 ⌘⌫ 留给文本编辑（在其里它是「删到行首」），
+            // 否则一边搜一边改错字会把选中的历史条目直接删掉。
+            guard coordinator.store.searchText.isEmpty else { return false }
             coordinator.store.removeSelected()
             return true
         case 6: // ⌘Z 撤销删除

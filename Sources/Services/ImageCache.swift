@@ -25,9 +25,34 @@ final class ImageCache {
 
     /// 列表里的小图。
     func thumbnail(for item: ClipItem) -> NSImage? {
-        guard let name = item.thumbBlob else { return nil }
-        return image(named: name, in: thumbnails, fallback: item.imageBlob)
+        if let name = item.thumbBlob {
+            // 正常路径：缩略图文件本来就小，同步读盘即可。
+            if let cached = thumbnails.object(forKey: name as NSString) { return cached }
+            if let url = ClipStorage.shared.blobURL(named: name),
+               let image = NSImage(contentsOf: url) {
+                set(image, in: thumbnails, key: name)
+                return image
+            }
+        }
+        // 兜底：缩略图写盘失败 / 被外部删了，但没有图就只剩一个占位方块，
+        // 在列表里完全分不出两张截图。以前这里直接返回全尺寸原图——横 46×34 的
+        // 九宫格里画一张 4K 图，解码后 64MB，还不敢入缓存（会把缩略图预算吃穿），
+        // 于是每次重绘都重新解一张。现在改成现场降采样出一张小图，可以放心缓存。
+        return fallbackThumbnail(for: item)
     }
+
+    /// 从原图现场生成一张 thumbnail 级别的缩略图（带独立缓存 key）。
+    private func fallbackThumbnail(for item: ClipItem) -> NSImage? {
+        guard let name = item.imageBlob, let url = ClipStorage.shared.blobURL(named: name) else { return nil }
+        let key = "fallback:\(name)" as NSString
+        if let cached = thumbnails.object(forKey: key) { return cached }
+        guard let image = Self.downscaledImage(at: url, maxPixelSize: Self.thumbnailMaxPixelSize) else { return nil }
+        set(image, in: thumbnails, key: key as String)
+        return image
+    }
+
+    /// 列表行按 46×34 pt 显示，2 倍屏下 92×68；留一点余量给 3 倍屏和圆角裁切。
+    private nonisolated static let thumbnailMaxPixelSize = 128
 
     /// 预览面板里的大图（同步）。只给一次性的点击场景用（放大浮层）。
     /// 预览窗格跟着选中项切换，必须走 `previewImage(for:)`。
@@ -50,6 +75,21 @@ final class ImageCache {
         guard let image = boxed.image else { return nil }
         set(image, in: previews, key: name)
         return image
+    }
+
+    /// 用 ImageIO 降采样解码：只解出需要的那张缩略图，不把原图整张读进内存。
+    private nonisolated static func downscaledImage(at url: URL, maxPixelSize: Int) -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
     }
 
     /// 在后台线程把文件解码成位图并包成 NSImage（不留惰性解码到主线程）。
