@@ -143,6 +143,19 @@ struct ClipRowView: View {
                 .foregroundStyle(.tertiary)
                 .fixedSize()
             if isHovering {
+                // 图片没有纯文本形态（⌥↩ 对图片仍按图片写回），这一行不给按钮，
+                // 否则点了等于什么都没变。
+                if item.kind != .image {
+                    Button {
+                        coordinator.paste(item, plainText: true)
+                    } label: {
+                        Image(systemName: "doc.plaintext")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help(L("粘贴为纯文本"))
+                }
                 Button {
                     coordinator.store.togglePin(item.id)
                 } label: {
